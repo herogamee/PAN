@@ -1,8 +1,20 @@
-PAN v2.5.2 + Shopee Connector v2.4.9 — local validation (2026-10-08)
-- PHP lint: RUN/SEE CI on exact commit
-- Login-throttle tests: RUN/SEE CI
-- Extension Node regression: RUN/SEE CI
-- PDO SQLite+MariaDB tests: locally blocked when PHP pdo_sqlite/pdo_mysql unavailable; mandatory in CI
-- Server Connector regression: RUN/SEE CI
-- Live Shopee session/API: NOT RUN (requires authorized browser account)
-- Production acceptance: NOT GRANTED
+PAN v2.5.2 + Shopee Connector v2.4.9 — validation record (2026-10-08)
+Implementation commit: 6d8cf4510e58466bc0c1b1c107c18886ce8a972a
+CI run: https://github.com/herogamee/PAN/actions/runs/37754666248
+
+LOCAL (PHP 8.4.24 / Node 22):
+- PHP syntax: PASS 29 PHP files
+- Shopee Extension regression: PASS 31/31
+- Login throttle PHP tests: PASS
+- PDO SQLite/MySQL local PHP transaction tests: NOT RUN (PDO extensions not installed here)
+- Real Shopee browser/API test: NOT RUN
+
+GITHUB CI on implementation SHA: SUCCESS
+- php-lint: PASS
+- login-security-regression: PASS
+- database-integration: PASS (disposable PDO SQLite and MariaDB, injected rollback, migration and account isolation)
+- extension-regression: PASS
+- server-connector-regression: PASS (Playwright fixture)
+- Tests use only synthetic data; this does not verify Shopee private buyer endpoints, actual purchased orders, or real production backup restore.
+
+PRODUCTION ACCEPTANCE: PENDING (Issue #1, #2, #7).

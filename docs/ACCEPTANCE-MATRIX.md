@@ -11,8 +11,8 @@
 | AUTO-01 | PHP syntax — project files | **PASS (CI)** | [Successful GitHub Actions run](https://github.com/herogamee/PAN/actions/runs/37746656907) |
 | AUTO-02 | Shopee Extension regression | **PASS (CI)** | [Same CI run](https://github.com/herogamee/PAN/actions/runs/37746656907) |
 | AUTO-03 | Server Connector regression + installed Playwright Chromium fixture | **PASS (CI)** | [Same CI run](https://github.com/herogamee/PAN/actions/runs/37746656907) |
-| AUTO-06 | Login throttle / CSRF security tests | **PENDING v2.5.2 CI** | [Source tests](../tests/login-throttle.php) |
-| AUTO-07 | PDO SQLite + disposable MariaDB integration / rollback / migration | **PENDING v2.5.2 CI** | [Source tests](../tests/db-integration.php) |
+| AUTO-06 | Login throttle / CSRF security tests | **PASS (synthetic CI)** | [Passed workflow](https://github.com/herogamee/PAN/actions/runs/37754666248) · [Login tests](../tests/login-throttle.php) |
+| AUTO-07 | PDO SQLite + disposable MariaDB integration / rollback / migration | **PASS (synthetic CI)** | [Passed workflow](https://github.com/herogamee/PAN/actions/runs/37754666248) · [DB integration tests](../tests/db-integration.php) |
 | AUTO-04 | Local PHP PDO SQLite/MySQL integration on production-like database | **NOT VERIFIED** | [Local build limitations](LOCAL-VALIDATION-v2.5.1.txt) |
 | AUTO-05 | Live Shopee buyer API / payment/logistics/category via a real user session | **NOT VERIFIED** | [Handoff limitations](PAN-v2.5.1-HANDOFF.md) |
 

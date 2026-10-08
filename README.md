@@ -282,7 +282,7 @@ PAN
 
 ---
 
-Version: **PAN 2.5.1**  
+Version: **PAN 2.5.2**  
 Character: **น้องแพน**  
 Role: **Marketplace & Commerce Assistant**  
 Brand: **itoom.work**

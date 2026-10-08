@@ -29,3 +29,9 @@
 - Phase 1: live Shopee account mapping, SQLite/MySQL tests on the target deployment with real historical data, backup/restore rehearsal.
 - Phase 2: payment/shipping/tracking accuracy and unavailable/missing-field semantics.
 - Phase 7: monitor/alerts, log redaction, trusted-proxy policy and holistic security audit.
+
+## CI evidence — v2.5.2 implementation
+
+- [Successful 5-job GitHub Actions run](https://github.com/herogamee/PAN/actions/runs/37754666248) on [implementation commit 6d8cf45](https://github.com/herogamee/PAN/commit/6d8cf4510e58466bc0c1b1c107c18886ce8a972a).
+- The disposable SQLite+MariaDB integration suite executes without production credentials and covers import/rollback/migration.
+- **This evidence does not close** live Shopee mapping, real historical DB acceptance, or production restore rehearsal.
