@@ -1,0 +1,85 @@
+# PAN — Roadmap & Release Gates
+
+> อัปเดต 2026-10-08 (Asia/Bangkok) · **PAN Core v2.5.1 + Shopee Connector v2.4.9** · Current `main`: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+>
+> **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
+
+## ศูนย์กลางติดตามงาน
+
+- [GitHub Issues — เปิดอยู่](https://github.com/herogamee/PAN/issues)
+- [Acceptance & Test Matrix](docs/ACCEPTANCE-MATRIX.md) — Test case, เกณฑ์ผ่าน, ผลจริง และหลักฐาน
+- [Staging Acceptance Runbook](docs/STAGING-ACCEPTANCE.md) — ขั้นตอนทดสอบ XAMPP3/Ubuntu และเก็บผลอย่างปลอดภัย
+- [PAN 2.5.1 Handoff](docs/PAN-v2.5.1-HANDOFF.md) — ขอบเขต release ล่าสุดและข้อจำกัด
+- [GitHub CI](.github/workflows/ci.yml) — PHP lint, Shopee Extension regression, Server Connector regression
+
+## สรุป 7 เฟส
+
+| เฟส / Issue | งาน | ความสำคัญ | สถานะ ณ วันที่อัปเดต | เงื่อนไขก่อนปิด |
+|---|---|---|---|---|
+| [1 — #1](https://github.com/herogamee/PAN/issues/1) | Production Acceptance & Data Integrity | **P0** | **Code/CI ผ่าน; Live/Staging ยังไม่ผ่านการตรวจรับ** | Shopee session จริง + SQLite/MySQL + safe recovery |
+| [2 — #2](https://github.com/herogamee/PAN/issues/2) | Payment / Shipping / Repair 3.0 | **P0** | **ทำบางส่วน** | แสดงค่าจริง/ว่างตรงตาม API; Repair state ตรงจริง |
+| [3 — #3](https://github.com/herogamee/PAN/issues/3) | Product Explorer / Price Intelligence 3.0 | P1 | **มี Foundation แล้ว** | จับคู่/merge/split ปลอดภัย + filters/sorts ผ่าน |
+| [4 — #4](https://github.com/herogamee/PAN/issues/4) | Shopee Server Connector | P1 | **Experimental** | ผ่าน Windows/Ubuntu + persistent session + error isolation |
+| [5 — #5](https://github.com/herogamee/PAN/issues/5) | Multi-Marketplace Core | P1 | **ยังไม่เริ่ม Migration หลัก** | Composite identity, SQLite/MySQL migration/rollback |
+| [6 — #6](https://github.com/herogamee/PAN/issues/6) | Additional Marketplace Connectors | P2 | **ยังไม่เริ่ม Adapter** | API/access feasibility + pilot หลัง Phase 5 |
+| [7 — #7](https://github.com/herogamee/PAN/issues/7) | Security / Monitoring / Backup | **P0** | **ทำบางส่วน** | Rate limit, redaction, monitoring, restore rehearsal |
+
+คำว่า **ทำบางส่วน** หมายถึงมี code หรือพื้นฐานใน repository; ไม่ใช่ production accepted. ทุก Issue มีรายการงานย่อยและข้อกำหนดการทดสอบที่ใช้พิจารณาปิดงาน
+
+## ลำดับทำงาน / Dependencies
+
+### ช่วง A — ความถูกต้องก่อนใช้งานจริง (P0)
+1. **Phase 1 (#1)**: ตั้ง staging โดยใช้สำเนาฐานข้อมูลที่มีสิทธิ์, ตรวจ PHP PDO, ซิงก์ออเดอร์จริงแบบไม่ปะปนบัญชี, Repair, cancellation, checkpoint, verify/rollback
+2. **Phase 2 (#2)**: ยืนยัน field mapping ชำระเงิน/ขนส่ง/เลขติดตาม/เวลาจาก session จริง; หาก Shopee ไม่ส่งค่า ต้องบอกว่าไม่ทราบ ห้ามเดาค่า
+3. **Phase 7 (#7)**: แก้จุดเสี่ยงด้าน login rate limit/secret logs, ระบบดู health และซ้อมกู้คืน backup (ทำคู่กับ Phase 1)
+4. **Gate A:** ไม่ประกาศ Production Accepted จนรายการ P0 ที่เกี่ยวข้องตรวจรับแล้วและไม่มีข้อมูลออเดอร์สูญหาย/ปะปน
+
+### ช่วง B — เพิ่มคุณภาพและความทนทาน
+5. **Phase 3 (#3)**: ตรวจ Product Explorer กับข้อมูลจริง ก่อนพัฒนา manual merge/split ที่ undo ได้; ต้องรักษา order snapshots
+6. **Phase 4 (#4)**: ทดสอบ Server Connector บน Windows XAMPP3/Ubuntu; ป้องกัน access denied/anti-fraud และรักษา session/profile โดยไม่หลบระบบยืนยัน
+
+### ช่วง C — เปิดหลาย Marketplace อย่างปลอดภัย
+7. **Phase 5 (#5)**: เปลี่ยนการระบุตัวตนของออเดอร์จาก global `order_no` เป็น identity ที่แยก platform/account ก่อน; migration แบบ reversible
+8. **Phase 6 (#6)**: ตรวจสิทธิ์/API ของ Lazada, TikTok Shop, LINE Shopping **แยก seller API กับ buyer history**; เลือก pilot เฉพาะที่เข้าถึงอย่างได้รับอนุญาตและหลัง Phase 5 ผ่าน
+9. **Gate C:** ห้ามเปิดใช้งาน Marketplace ใหม่ใน production ก่อน identity migration และ regression ของ Shopee ผ่าน
+
+> การศึกษาความเป็นไปได้ของ Phase 6 ทำล่วงหน้าได้ แต่ไม่ควรต่อ Adapter เข้าฐานข้อมูลจริงก่อน Phase 5 ผ่าน
+
+## Release Gate: Definition of Done
+
+ใช้ครบทุกข้อที่เกี่ยวข้องก่อนปิด Issue หรือเลื่อน release เป็น Stable:
+
+- [ ] ระบุ commit SHA, version PAN/Connector, environment และ rollback path
+- [ ] PHP syntax ผ่าน และ Node regression ที่เกี่ยวข้องผ่านใน CI บน commit เดียวกัน
+- [ ] ข้อมูล import/reconcile ไม่ข้ามบัญชี, ไม่ทิ้ง order เมื่อ schema ไม่รู้จัก และไม่แสดง false Complete
+- [ ] ถ้าแตะฐานข้อมูล: test ทั้ง SQLite / MySQL เท่าที่รองรับ พร้อม backup, migration verification, idempotence และ restore rehearsal
+- [ ] ถ้าแตะ Shopee endpoint/session: ทดสอบด้วยบัญชีที่ได้รับอนุญาต; บันทึกแยกว่าผ่าน/ติดสิทธิ์/ยังไม่ทดสอบ
+- [ ] UI แสดง `unknown / pending / partial / error / complete` ตามสถานะจริงและไม่มีข้อมูลแต่งเติม
+- [ ] Evidence (sanitized) อยู่ใน [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ Issue
+- [ ] ห้าม Commit `storage/config.php`, DB/SQLite จริง, cookies, OTP, session profiles, buyer identifiers หรือ credentials
+- [ ] ก่อนปล่อย ZIP/patch: `VERSION` ต้องตรง target, เปรียบเทียบกับ Complete ที่ทดสอบแล้ว และตรวจว่าการติดตั้งจาก exact base สำเร็จ
+
+### สถานะที่ใช้ในแผน
+
+| สถานะ | ความหมาย |
+|---|---|
+| Not started | ยังไม่เริ่ม implementation; อาจมีเพียงแนวคิด |
+| Foundation/Partial | มี source ที่ครอบคลุมบางส่วน แต่ยังไม่ครบเกณฑ์ |
+| Experimental | ต้องพิสูจน์ด้าน environment, session หรือ platform |
+| Code/CI pass, acceptance pending | ผ่าน unit/static/CI แต่ยังไม่ผ่านทดสอบปลายทางจริง |
+| Accepted | ทุกเกณฑ์ผ่านจริง มี evidence และ rollback |
+
+## วิธีดำเนินงานร่วมกันผ่าน GitHub
+
+1. ทุกงานใหม่สร้าง Issue ระบุ **Phase, change scope, data safety, checklist, acceptance case ID** จาก [Issue Template](.github/ISSUE_TEMPLATE/pan-task.md)
+2. ทุก pull request ระบุ Issue, regression cases, DB/API compatibility และ rollback จาก [PR Template](.github/pull_request_template.md)
+3. ลงผลแต่ละรอบใน [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) โดยแยก **CI Passed** ออกจาก **Live Passed**
+4. Merge เข้าสาขา `main` เฉพาะเมื่อ review/test ผ่านตาม scope; เปลี่ยนสถานะ ROADMAP หลังมีหลักฐาน **ห้ามติ๊กครบจากความคาดเดา**
+5. อัปเดต Release Notes และกำหนดเวอร์ชันถ้ามีการเปลี่ยน source/runtime behavior; เอกสารอย่างเดียวไม่เพิ่มเวอร์ชันโปรแกรม
+
+## ขอบเขตที่ยังไม่ยืนยัน
+
+- Shopee buyer/private API อาจเปลี่ยนและมีข้อจำกัดรายบัญชี/เซสชัน จึงไม่รับรองข้อมูล Payment/Shipping/Tracking จนตรวจบน session จริง
+- Server Connector ที่ผ่าน fixture ไม่ยืนยัน Shopee ยอมรับ IP/automation ใน production
+- ยังไม่มีหลักฐานใน repo ว่าได้ตรวจ data-integrity transaction บน DB ที่มีข้อมูลจริงทั้ง SQLite และ MySQL แล้ว
+- ช่วงเวลาเสร็จของแต่ละเฟส **ยังไม่ได้กำหนด**; ให้รายงานตาม gate จริง ไม่เดาร้อยละความคืบหน้า

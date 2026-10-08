@@ -10,6 +10,12 @@
 - Legacy/functional alias: `https://commerce.itoom.work` → redirect ไป `https://pan.itoom.work`
 - Theme: Orange / White / Charcoal
 
+## Roadmap และงานที่ค้าง
+
+**เริ่มติดตามงาน 7 เฟสใน GitHub อย่างเป็นทางการ:** [ROADMAP.md](ROADMAP.md) · [Issues #1–#7](https://github.com/herogamee/PAN/issues) · [Acceptance/Test Matrix](docs/ACCEPTANCE-MATRIX.md) · [Staging Runbook](docs/STAGING-ACCEPTANCE.md).
+
+PAN v2.5.1 + Connector v2.4.9 มี source และ automated CI ผ่านแล้ว แต่ **ยังไม่ผ่าน Production Acceptance** จนกว่าจะตรวจ Shopee real-session, Payment/Shipping/Repair, database transactions และ restore ตาม [Phase 1](https://github.com/herogamee/PAN/issues/1). **ห้ามตีความว่า CI pass = live pass.**
+
 Shopee เป็นเพียง Connector ตัวแรกของ PAN ไม่ใช่ชื่อของระบบหลัก เพื่อให้ในอนาคตเพิ่ม Lazada, TikTok Shop, LINE Shopping หรือ Marketplace อื่นได้โดยไม่ต้องเปลี่ยนชื่อโปรเจกต์อีก
 
 ## มีอะไรเปลี่ยนจาก ITOOM Commerce Hub 2.3.0
