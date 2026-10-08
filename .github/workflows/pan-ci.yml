@@ -35,7 +35,7 @@ jobs:
         run: |
           test ! -e storage/config.php
           test ! -d connectors/shopee-server/node_modules
-          test -z "$(find . -type f \( -name '*.sqlite' -o -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' -o -name '*.pyc' \) -print -quit)"
+          test -z "$(git ls-files '*.sqlite' '*.db' '*.db-wal' '*.db-shm' '*.pyc')"
   browser:
     name: Shopee server connector with real Chromium fixture
     runs-on: ubuntu-latest
