@@ -1,5 +1,9 @@
 name: Import PAN complete source
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pan-source-import.yml'
   workflow_dispatch:
 
 permissions:
