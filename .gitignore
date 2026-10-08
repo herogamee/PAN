@@ -1,0 +1,18 @@
+# Never commit private runtime state or session profiles
+/storage/*
+!/storage/.gitkeep
+!/storage/.htaccess
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.bak
+*.env
+!.env.example
+**/node_modules/
+**/playwright-report/
+**/test-results/
+**/.DS_Store
+Thumbs.db

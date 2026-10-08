@@ -1,0 +1,20 @@
+[Unit]
+Description=PAN Shopee browser connector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pan-connector
+Group=pan-connector
+WorkingDirectory=/var/www/pan/connectors/shopee-server
+Environment=PLAYWRIGHT_BROWSERS_PATH=/var/lib/pan-shopee/browsers
+ExecStart=/usr/bin/node --env-file=/var/lib/pan-shopee/connector.env /var/www/pan/connectors/shopee-server/server.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+TimeoutStopSec=90
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
