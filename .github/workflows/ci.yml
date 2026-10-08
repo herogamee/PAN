@@ -1,0 +1,44 @@
+name: PAN source integrity
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  php-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, pdo_mysql
+      - name: PHP syntax
+        run: |
+          find . -path './connectors/shopee-server/node_modules' -prune -o -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+  extension-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Shopee Extension regression
+        run: node --test connectors/shopee-extension/test/*.test.mjs
+  server-connector-regression:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: connectors/shopee-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: connectors/shopee-server/package-lock.json
+      - name: Install test dependencies
+        run: npm ci
+      - name: Install Chromium for real-browser test
+        run: npx playwright install --with-deps chromium
+      - name: Server connector tests
+        run: npm test

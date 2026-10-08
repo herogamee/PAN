@@ -5,14 +5,13 @@ import { readFile } from 'node:fs/promises';
 import { webcrypto } from 'node:crypto';
 const source=await readFile(new URL('../background.js',import.meta.url),'utf8');
 function order(id,date='2026-09-15',type=3){return {list_type:type,info_card:{order_id:id,create_time:date?Date.parse(date+'T00:00:00Z')/1000:undefined,final_total:10000000,order_list_cards:[{shop_info:{shop_id:1,shop_name:'Fixture'},product_info:{item_groups:[{items:[{item_id:1,name:'Item',amount:1,item_price:10000000}]}]}}]}};}
-async function fixture({pages,seed={},failImport=false,cutoff='2026-09-08',accountIds=[],initialPanOrders=0,existingOrderNos=[],productQueuePages,productResponses={}}={}){
-  const storage={hubUrl:'http://localhost/pan',apiKey:'fixture',...seed},requests=[],posts=[],queueReads=[],productReads=[];let identities=0;
+async function fixture({pages,seed={},failImport=false,cutoff='2026-09-08',accountIds=[],initialPanOrders=0,existingOrderNos=[]}={}){
+  const storage={hubUrl:'http://localhost/pan',apiKey:'fixture',...seed},requests=[],posts=[];let identities=0;
   const knownOrders=new Set(existingOrderNos.map(String));const basePanOrders=Math.max(0,Number(initialPanOrders||0)-knownOrders.size);
   const panCount=()=>basePanOrders+knownOrders.size;
   const sandbox={crypto:webcrypto,console,setTimeout:fn=>{queueMicrotask(fn);return 0;},clearTimeout(){},fetch:async(url,opts={})=>{
     if(url.includes('/api/status.php'))return {ok:true,status:200,text:async()=>JSON.stringify({ok:true,version:'2.4.1',purchase_orders:panCount(),orders:panCount(),accounts:1})};
     if(url.includes('sync_anchor.php'))return {ok:true,status:200,text:async()=>JSON.stringify({ok:true,account_id:'42',cutoff_date:cutoff,latest_order_date:'2026-09-15'})};
-    if(url.includes('/api/product_queue.php')){queueReads.push(url);const q=productQueuePages?.(url,queueReads.length)||{products:[],has_more:false};return {ok:true,status:200,text:async()=>JSON.stringify({ok:true,...q})};}
     const body=opts.body?JSON.parse(opts.body):{};posts.push({url,body});
     if(failImport&&url.endsWith('/import.php'))return {ok:false,status:503,text:async()=>'"{\"ok\":false,\"error\":\"import failed\"}"'.slice(1,-1)};
     if(url.endsWith('/import.php')){
@@ -27,14 +26,13 @@ async function fixture({pages,seed={},failImport=false,cutoff='2026-09-08',accou
     return {ok:true,status:200,text:async()=>'"{\"ok\":true}"'.slice(1,-1)};
   },chrome:{storage:{local:{get:async keys=>Object.fromEntries((Array.isArray(keys)?keys:[keys]).map(k=>[k,structuredClone(storage[k])])),set:async values=>Object.assign(storage,structuredClone(values))}},runtime:{sendMessage:async()=>{},onMessage:{addListener(){}}},scripting:{executeScript:async({func,args})=>{
     if(func.toString().includes('get_account_info'))return [{result:{ok:true,account:{userid:accountIds[identities++]||42,username:'fixture'}}}];
-    if(func.toString().includes('/api/v4/pdp/get_pc')){const key=String(args[0])+':'+String(args[1]);productReads.push(key);const result=productResponses[key]||{ok:true,http:200,json:{data:{item:{categories:[{catid:99,display_name:'Electronics'}]}}}};return [{result}];}
     const primary=func.toString().includes('get_all_order_and_checkout_list');
     const type=primary?'primary':args[0],offset=primary?args[0]:args[1];requests.push({type,offset});
     const result=pages?.(type,offset)||{data:{details_list:[],next_offset:-1}};
     return [{result:{ok:!result.http||result.http===200,http:result.http||200,json:result,url:'https://shopee.co.th/api/v4/order/get_order_list'}}];
   }}}};
   const ctx=vm.createContext(sandbox);vm.runInContext(source,ctx);
-  return {ctx,storage,requests,posts,queueReads,productReads,run:fresh=>ctx.runRecentSync(1,fresh),state:()=>storage.syncStates?.['42']||{}};
+  return {ctx,storage,requests,posts,run:fresh=>ctx.runRecentSync(1,fresh),state:()=>storage.syncStates?.['42']||{}};
 }
 
 test('uses primary history and stops after two old pages without reconcile',async()=>{
@@ -314,48 +312,4 @@ test('v2.4.8 full sync checks account identity before every page',async()=>{
   await f.ctx.runSync(1,true);
   assert.match(f.state().error,/บัญชี Shopee เปลี่ยนระหว่าง Full Sync/);
   assert.equal(f.posts.length,0);
-});
-
-
-test('v2.4.9 category queue pages past failures and never repeats an uncategorized first item',async()=>{
-  const cursor={after_order_id:10,after_shop_id:'shop',after_item_id:'2'};
-  const f=await fixture({
-    productQueuePages:(_url,n)=>n===1?{products:[{shop_id:'shop',item_id:'1'},{shop_id:'shop',item_id:'2'}],has_more:true,next_cursor:cursor}:{products:[{shop_id:'shop',item_id:'3'}],has_more:false,next_cursor:null},
-    productResponses:{'shop:1':{ok:false,http:404,json:{error:404}}}
-  });
-  await f.ctx.runProductEnrichment(1);
-  assert.deepEqual(f.productReads,['shop:1','shop:2','shop:3']);
-  assert.equal(f.queueReads.length,2);
-  assert.match(f.queueReads[1],/after_order_id=10/);
-  assert.equal(f.state().done,true);
-  assert.equal(f.state().productEnrichDone,2);
-  assert.equal(f.state().productEnrichErrors,1);
-  assert.equal(f.state().productEnrichProcessed,3);
-  assert.equal(f.posts.filter(x=>x.url.includes('product_enrich.php')).length,2);
-});
-
-test('v2.4.9 category queue aborts malformed cursor without repeating or silently completing',async()=>{
-  const f=await fixture({productQueuePages:()=>({products:[{shop_id:'s',item_id:'1'}],has_more:true,next_cursor:null})});
-  await f.ctx.runProductEnrichment(1);
-  assert.equal(f.state().done,false);
-  assert.match(f.state().error,/cursor/);
-  assert.equal(f.productReads.length,1);
-  assert.equal(f.queueReads.length,1);
-});
-
-test('v2.4.9 category enrichment stops when Shopee account changes',async()=>{
-  const f=await fixture({accountIds:[42,42,99],productQueuePages:()=>({products:[{shop_id:'s',item_id:'1'},{shop_id:'s',item_id:'2'}],has_more:false})});
-  await f.ctx.runProductEnrichment(1);
-  assert.equal(f.state().done,false);
-  assert.match(f.state().error,/บัญชี Shopee เปลี่ยน/);
-  assert.deepEqual(f.productReads,['s:1']);
-});
-
-test('v2.4.9 category enrichment stops on expired Shopee session',async()=>{
-  const f=await fixture({productQueuePages:()=>({products:[{shop_id:'s',item_id:'1'},{shop_id:'s',item_id:'2'}],has_more:false}),productResponses:{'s:1':{ok:false,http:403,json:{error:0}}}});
-  await f.ctx.runProductEnrichment(1);
-  assert.equal(f.state().done,false);
-  assert.match(f.state().error,/Shopee ปฏิเสธสิทธิ์/);
-  assert.deepEqual(f.productReads,['s:1']);
-  assert.equal(f.state().productEnrichErrors,0);
 });

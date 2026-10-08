@@ -307,10 +307,11 @@ function import_collector_payload(PDO $db,array $payload):array {
 function enrich_order_payload(PDO $db,array $r):array {
     ensure_schema_v200($db);$orderNo=trim((string)($r['order_no']??''));if($orderNo==='')throw new RuntimeException('order_no required');
     $st=$db->prepare('SELECT id,source_account_id FROM orders WHERE order_no=?');$st->execute([$orderNo]);$row=$st->fetch();if(!$row)throw new RuntimeException('ไม่พบ Order '.$orderNo);
-    // Never let detail enrichment from a different Shopee account overwrite this order.
-    $storedAccount=trim((string)($row['source_account_id']??''));
-    $incomingAccount=trim((string)($r['source_account_id']??''));
-    if($storedAccount!==''&&($incomingAccount===''||!hash_equals($storedAccount,$incomingAccount)))throw new RuntimeException('Order Detail ไม่ตรงกับบัญชี Shopee ที่บันทึกไว้');
+    // A detail/cancellation event must never mutate an order owned by another Shopee account.
+    $providedAccountId=trim((string)($r['source_account_id']??''));
+    $storedAccountId=trim((string)($row['source_account_id']??''));
+    if($providedAccountId!=='' && $storedAccountId!=='' && $providedAccountId!==$storedAccountId)
+      throw new RuntimeException('Shopee account mismatch for Order '.$orderNo);
     if((int)($r['list_type']??0)===4){$db->prepare('DELETE FROM orders WHERE id=?')->execute([(int)$row['id']]);return ['deleted_cancelled'=>1];}
     $sets=[];$params=[':id'=>(int)$row['id']];
     foreach(['source_account_id','source_account_username','order_created_at','paid_at','delivered_at','completed_at','delivery_date_source','payment_method','shipping_carrier','tracking_number','date_source','identity_source','detail_error','detail_missing_fields'] as $f){if(array_key_exists($f,$r)){$sets[]="$f=:$f";$params[":$f"]=(string)$r[$f];}}

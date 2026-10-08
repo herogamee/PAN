@@ -47,7 +47,7 @@ if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
                 $migration=migrate_sqlite_to_mysql(['driver'=>'sqlite','path'=>$existingSqliteRel],$dbCfg);
             }
             $cfg=[
-              'version'=>'2.5.0','installed_at'=>date('c'),'app_url'=>$appUrl,
+              'version'=>'2.5.1','installed_at'=>date('c'),'app_url'=>$appUrl,
               'admin_user'=>$admin,'admin_password_hash'=>password_hash($password,PASSWORD_DEFAULT),
               'api_key'=>bin2hex(random_bytes(32)),'maintenance'=>false,'db'=>$dbCfg
             ];
@@ -60,10 +60,10 @@ if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
 }
 function eh($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 ?>
-<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ติดตั้ง PAN — น้องแพน 2.5.0</title><style>
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ติดตั้ง PAN — น้องแพน 2.5.1</title><style>
 *{box-sizing:border-box}body{font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;background:#f6f7fb;color:#18181b;margin:0;padding:32px}.wrap{max-width:980px;margin:auto}.hero,.card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:22px;margin-bottom:14px}.hero h1{margin:0 0 8px}.muted{color:#6b7280;line-height:1.6}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.choice{border:1px solid #ddd;border-radius:13px;padding:15px}label{font-weight:700;display:block;margin:10px 0 5px}input[type=text],input[type=password],input[type=number]{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:9px}.mysql{padding-top:4px}.note{background:#fff7ed;border:1px solid #fed7aa;padding:12px;border-radius:10px;margin:12px 0}.ok{background:#ecfdf5;border:1px solid #a7f3d0}.err{background:#fef2f2;border:1px solid #fecaca}.btn{border:0;background:#ee4d2d;color:#fff;padding:12px 18px;border-radius:10px;font-weight:800;cursor:pointer}.checks{display:grid;gap:6px;font-size:13px}@media(max-width:760px){.grid{grid-template-columns:1fr}body{padding:14px}}
 </style></head><body><div class="wrap">
-<div class="hero"><h1>PAN — น้องแพน 2.5.0 · First Run</h1><div class="muted">ตั้งค่าฐานข้อมูล, Admin Login และ API Key สำหรับ Shopee Connector ในครั้งเดียว รองรับ SQLite และ MySQL ตั้งแต่วันแรก</div></div>
+<div class="hero"><h1>PAN — น้องแพน 2.5.1 · First Run</h1><div class="muted">ตั้งค่าฐานข้อมูล, Admin Login และ API Key สำหรับ Shopee Connector ในครั้งเดียว รองรับ SQLite และ MySQL ตั้งแต่วันแรก</div></div>
 <?php if($errors):?><div class="card err"><b>ติดตั้งยังไม่สำเร็จ</b><ul><?php foreach($errors as $e):?><li><?=eh($e)?></li><?php endforeach;?></ul></div><?php endif;?>
 <div class="card"><h3>ตรวจสภาพแวดล้อม</h3><div class="checks"><div>PHP: <b><?=eh(PHP_VERSION)?></b></div><div>PDO SQLite: <b><?=extension_loaded('pdo_sqlite')?'พร้อม':'ยังไม่เปิด'?></b></div><div>PDO MySQL: <b><?=extension_loaded('pdo_mysql')?'พร้อม':'ยังไม่เปิด'?></b></div><div>storage/: <b><?=hub_storage_ready()?'เขียนได้':'เขียนไม่ได้'?></b></div><?php if($hasExistingSqlite):?><div>พบ SQLite เดิม <code><?=eh(basename($existingSqlite))?></code>: <b><?=number_format(filesize($existingSqlite)/1024/1024,2)?> MB</b> — สามารถย้ายเข้า MySQL ตอนติดตั้งได้</div><?php endif;?></div></div>
 <form method="post" class="card">

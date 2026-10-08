@@ -15,7 +15,7 @@ async function mainWorldAccount(tabId){return execMain(tabId,async()=>{const url
 async function mainWorldPage(tabId,offset,limit){return execMain(tabId,async(offset,limit)=>{const url=`${location.origin}/api/v4/order/get_all_order_and_checkout_list?limit=${limit}&offset=${offset}`;const res=await fetch(url,{method:'GET',credentials:'include',cache:'no-store',headers:{accept:'application/json, text/plain, */*','x-api-source':'pc'}});let json=null;try{json=await res.json()}catch{}return {http:res.status,ok:res.ok,url,json};},[offset,limit]);}
 async function mainWorldStatusPage(tabId,listType,offset,limit){return execMain(tabId,async(listType,offset,limit)=>{const url=`${location.origin}/api/v4/order/get_order_list?list_type=${encodeURIComponent(listType)}&offset=${offset}&limit=${limit}`;const res=await fetch(url,{method:'GET',credentials:'include',cache:'no-store',headers:{accept:'application/json, text/plain, */*','x-api-source':'pc'}});let json=null;try{json=await res.json()}catch{}return {http:res.status,ok:res.ok,url,json};},[listType,offset,limit]);}
 async function mainWorldDetail(tabId,orderId){return execMain(tabId,async orderId=>{const url=`${location.origin}/api/v4/order/get_order_detail?order_id=${encodeURIComponent(orderId)}`;const res=await fetch(url,{credentials:'include',headers:{accept:'application/json','x-api-source':'pc'}});let json=null;try{json=await res.json()}catch{}return {http:res.status,ok:res.ok,url,json};},[orderId]);}
-async function mainWorldProduct(tabId,shopId,itemId){return execMain(tabId,async(shopId,itemId)=>{const urls=[`${location.origin}/api/v4/pdp/get_pc?shop_id=${encodeURIComponent(shopId)}&item_id=${encodeURIComponent(itemId)}&tz_offset_minutes=420&detail_level=0`,`${location.origin}/api/v4/item/get?shopid=${encodeURIComponent(shopId)}&itemid=${encodeURIComponent(itemId)}`];for(const url of urls){try{const res=await fetch(url,{credentials:'include',cache:'no-store',headers:{accept:'application/json, text/plain, */*','x-api-source':'pc'}});let json=null;try{json=await res.json()}catch{}if(res.status===401||res.status===403||Number(json?.error||0)===90309999)return {http:res.status,ok:false,url,json};if(res.ok&&json&&Number(json.error||0)===0)return {http:res.status,ok:true,url,json};}catch{}}return {http:0,ok:false,url:urls[0],json:null};},[shopId,itemId]);}
+async function mainWorldProduct(tabId,shopId,itemId){return execMain(tabId,async(shopId,itemId)=>{const urls=[`${location.origin}/api/v4/pdp/get_pc?shop_id=${encodeURIComponent(shopId)}&item_id=${encodeURIComponent(itemId)}&tz_offset_minutes=420&detail_level=0`,`${location.origin}/api/v4/item/get?shopid=${encodeURIComponent(shopId)}&itemid=${encodeURIComponent(itemId)}`];for(const url of urls){try{const res=await fetch(url,{credentials:'include',cache:'no-store',headers:{accept:'application/json, text/plain, */*','x-api-source':'pc'}});let json=null;try{json=await res.json()}catch{}if(res.ok&&json&&Number(json.error||0)===0)return {http:res.status,ok:true,url,json};}catch{}}return {http:0,ok:false,url:urls[0],json:null};},[shopId,itemId]);}
 
 function orderRecordFromEntry(entry){
   if(!entry||typeof entry!=='object'||Array.isArray(entry))return null;
@@ -145,7 +145,7 @@ async function processSyncRecords(raw,account,hub,scanId,pageUrl,seenOrderNos=[]
     else{ignored++;const reason=n.ignoredReason||'unknown';reasonCounts[reason]=(reasonCounts[reason]||0)+1;}
   }
   const structural=['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].reduce((s,k)=>s+(reasonCounts[k]||0),0);
-  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรงกับ Normalizer 2.4.8 · หยุดก่อนเลื่อน checkpoint · structural=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · sample=${JSON.stringify(raw.find(x=>{const n=normalizeOrder(x,account);return ['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].includes(n.ignoredReason)})||raw[0]).slice(0,6000)}`);
+  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรงกับ Normalizer 2.4.9 · หยุดก่อนเลื่อน checkpoint · structural=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · sample=${JSON.stringify(raw.find(x=>{const n=normalizeOrder(x,account);return ['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].includes(n.ignoredReason)})||raw[0]).slice(0,6000)}`);
   let cancelledResult={deleted:0},importResult={};
   if(cancelledNos.length)cancelledResult=await postCancelled(hub,String(account.userid),cancelledNos)||{deleted:0};
   if(batch.length)importResult=await postBatch(hub,batch,{url:pageUrl,scanId,jobType:options.jobType||'sync'})||{};
@@ -263,58 +263,28 @@ async function runRepair(tabId,resume=false,all=false){
   finally{runningJob=null;}
 }
 
-function productQueuePath(aid,cursor=null){
-  const parts=[`account_id=${encodeURIComponent(aid)}`,'limit=100'];
-  if(cursor){
-    for(const k of ['after_order_id','after_shop_id','after_item_id'])parts.push(`${k}=${encodeURIComponent(cursor[k])}`);
-  }
-  return '/api/product_queue.php?'+parts.join('&');
-}
 async function runProductEnrichment(tabId){
-  if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runningJob='product-enrich';let aid='';
-  try{
-    const cfg=await chrome.storage.local.get('hubUrl'),hub=cfg.hubUrl||DEFAULT_HUB,account=await accountForTab(tabId);
-    aid=String(account.userid);let done=0,errors=0,processed=0,cursor=null,pages=0;
-    const seenCursors=new Set();
-    await setState(aid,{running:true,paused:false,done:false,error:'',job:'product-enrich',productEnrichDone:0,productEnrichErrors:0,productEnrichProcessed:0,status:'กำลังโหลดสินค้าที่ยังไม่มีหมวด'});
+  if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runningJob='product-enrich';
+  try{const cfg=await chrome.storage.local.get('hubUrl'),hub=cfg.hubUrl||DEFAULT_HUB,account=await accountForTab(tabId),aid=String(account.userid);let done=0,errors=0;
+    await setState(aid,{running:true,paused:false,done:false,error:'',job:'product-enrich',productEnrichDone:0,productEnrichErrors:0,status:'กำลังโหลดสินค้าที่ยังไม่มีหมวด'});
+    let afterShop='',afterItem='';
     while(true){
-      const q=await hubJson(hub,productQueuePath(aid,cursor)),rows=q.products||[];
-      if(!Array.isArray(rows))throw new Error('PAN ส่ง product queue ไม่ถูกต้อง');
-      if(!rows.length){if(q.has_more)throw new Error('product queue ส่ง empty page ทั้งที่ has_more=true');break;}
-      for(const row of rows){
-        const st=await getState(aid);
-        if(st.paused){await setState(aid,{running:false,status:'หยุดเติมหมวดสินค้า'});return;}
-        if(String((await accountForTab(tabId)).userid)!==aid)throw new Error('SESSION_BLOCK บัญชี Shopee เปลี่ยนระหว่างเติมหมวดสินค้า');
-        try{
-          const r=await mainWorldProduct(tabId,row.shop_id,row.item_id);
-          if(r?.http===401||r?.http===403||Number(r?.json?.error||0)===90309999)throw new Error('SESSION_BLOCK Shopee ปฏิเสธสิทธิ์เข้าถึงข้อมูลสินค้า');
-          if(!r?.ok||!r?.json)throw new Error('Shopee product detail unavailable');
-          const cat=extractCategoryInfo(r.json);
-          if(!cat||(!cat.category_name&&!cat.category_id))throw new Error('Shopee product detail ไม่มี category ที่อ่านได้');
-          await hubJson(hub,'/api/product_enrich.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({shop_id:String(row.shop_id),item_id:String(row.item_id),...cat,source:'shopee_product_detail'})});
-          done++;
-        }catch(e){
-          const msg=String(e.message||e);
-          if(msg.startsWith('SESSION_BLOCK'))throw e;
-          errors++;await setState(aid,{lastProductEnrichError:msg});
-        }
-        processed++;
-        await setState(aid,{productEnrichDone:done,productEnrichErrors:errors,productEnrichProcessed:processed,status:`เติมหมวดสินค้า ${done} สำเร็จ / ${errors} ผิดพลาด`});
-        await sleep(350+Math.floor(Math.random()*250));
-      }
-      if(!q.has_more)break;
-      const next=q.next_cursor;
-      if(!next||!Number.isSafeInteger(Number(next.after_order_id))||Number(next.after_order_id)<=0||!String(next.after_shop_id||'')||!String(next.after_item_id||''))throw new Error('product queue cursor ไม่ถูกต้อง');
-      const key=JSON.stringify(next);
-      if(seenCursors.has(key)||key===JSON.stringify(cursor))throw new Error('product queue cursor วนซ้ำ');
-      seenCursors.add(key);cursor=next;
-      if(++pages>10000)throw new Error('product queue page safety limit exceeded');
-    }
-    await setState(aid,{running:false,done:true,status:`เติมหมวดสินค้าเสร็จ · ${done} สำเร็จ · ${errors} ผิดพลาด${errors?' · รายการผิดพลาดจะลองใหม่เมื่อสั่งงานครั้งถัดไป':''}`});
-  }catch(e){
-    if(aid)await setState(aid,{running:false,done:false,error:String(e.message||e),status:'error'});
-    else throw e;
-  }finally{runningJob=null;}
+      const cursor=afterShop&&afterItem?`&after_shop_id=${encodeURIComponent(afterShop)}&after_item_id=${encodeURIComponent(afterItem)}`:'';
+      const q=await hubJson(hub,`/api/product_queue.php?account_id=${encodeURIComponent(aid)}&limit=100${cursor}`),rows=q.products||[];
+      if(!rows.length)break;
+      for(const row of rows){const st=await getState(aid);if(st.paused){await setState(aid,{running:false,status:'หยุดเติมหมวดสินค้า'});return;}if(String((await accountForTab(tabId)).userid)!==aid)throw new Error('บัญชี Shopee เปลี่ยนระหว่างเติมหมวดสินค้า');
+        try{const r=await mainWorldProduct(tabId,row.shop_id,row.item_id);if(!r?.ok||!r?.json)throw new Error('Shopee product detail unavailable');const cat=extractCategoryInfo(r.json);if(!cat||(!cat.category_name&&!cat.category_id))throw new Error('Shopee product detail ไม่มี category ที่อ่านได้');await hubJson(hub,'/api/product_enrich.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({shop_id:String(row.shop_id),item_id:String(row.item_id),...cat,source:'shopee_product_detail'})});done++;await setState(aid,{productEnrichDone:done,productEnrichErrors:errors,status:`เติมหมวดสินค้า ${done} สำเร็จ / ${errors} ผิดพลาด`});}
+        catch(e){errors++;await setState(aid,{productEnrichDone:done,productEnrichErrors:errors,lastProductEnrichError:String(e.message||e),status:`เติมหมวดสินค้า ${done} สำเร็จ / ${errors} ผิดพลาด`});}
+        await sleep(350+Math.floor(Math.random()*250));}
+      // Each key is visited once per run, even if Shopee denies category data.
+      // Failed products stay pending for a manual retry, but cannot starve later pages.
+      const last=q.next_cursor||{shop_id:rows.at(-1)?.shop_id,item_id:rows.at(-1)?.item_id};
+      const nextShop=String(last?.shop_id||''),nextItem=String(last?.item_id||'');
+      if(!nextShop||!nextItem||(nextShop===afterShop&&nextItem===afterItem))throw new Error('PAN product queue cursor did not advance');
+      afterShop=nextShop;afterItem=nextItem;
+      if(q.has_more===false||rows.length<100)break;
+    }await setState(aid,{running:false,done:true,status:`เติมหมวดสินค้าเสร็จ · ${done} สำเร็จ · ${errors} ผิดพลาด`});
+  }catch(e){try{const last=(await chrome.storage.local.get('lastAccountId')).lastAccountId||'';if(last)await setState(last,{running:false,error:String(e.message||e),status:'error'});}catch{}}finally{runningJob=null;}
 }
 
 // Only completed/cancelled histories stop early. Other statuses are checked in full.

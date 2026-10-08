@@ -59,7 +59,7 @@ if($format==='sqlite'){
 }
 if($format==='all_json'){
     send_headers('application/json; charset=UTF-8',dl_name('pan-all-data','json'));
-    echo '{"exported_at":'.json_encode(date('c')).',"version":"2.5.0","analytics":'.json_encode(analytics_snapshot($db),JSON_UNESCAPED_UNICODE).',"tables":{';
+    echo '{"exported_at":'.json_encode(date('c')).',"version":"2.5.1","analytics":'.json_encode(analytics_snapshot($db),JSON_UNESCAPED_UNICODE).',"tables":{';
     $firstTable=true;foreach(['orders','order_items','accounts','collector_batches'] as $t){if(!$firstTable)echo ',';$firstTable=false;echo json_encode($t).':[';$st=$db->query('SELECT * FROM '.$t);$first=true;while($row=$st->fetch(PDO::FETCH_ASSOC)){if(!$first)echo ',';$first=false;echo json_encode($row,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);}echo ']';if(function_exists('ob_flush'))@ob_flush();flush();}echo '}}';exit;
 }
 http_response_code(400);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'unknown export format'],JSON_UNESCAPED_UNICODE);

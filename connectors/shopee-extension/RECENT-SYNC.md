@@ -13,7 +13,7 @@
 
 ## Auto Detail Enrichment
 
-หลัง Recent Sync นำเข้า page สำเร็จ Connector 2.4.8 จะเติม Order Detail อัตโนมัติเฉพาะ Order ที่ควร refresh เช่น Order ใหม่, status เปลี่ยน, หรือ Detail ยัง pending/error โดยไม่ยิง Detail ใหม่ทุก Order ทุกครั้ง
+หลัง Recent Sync นำเข้า page สำเร็จ Connector 2.4.9 จะเติม Order Detail อัตโนมัติเฉพาะ Order ที่ควร refresh เช่น Order ใหม่, status เปลี่ยน, หรือ Detail ยัง pending/error โดยไม่ยิง Detail ใหม่ทุก Order ทุกครั้ง
 
 Detail ที่พยายามเติม ได้แก่ payment method, shipping/logistics carrier, tracking, paid/delivered/completed timestamps และ metadata ที่ Shopee ส่งกลับมา หาก Shopee ไม่ส่ง field บางตัว PAN จะบันทึก state เป็น `partial` แทนการแสดงว่า “ยังไม่ Repair” อย่างกำกวม
 
@@ -49,8 +49,4 @@ Extension แยก:
 node --test connectors/shopee-extension/test/recent.test.mjs
 ```
 
-Connector 2.4.8 เพิ่ม regression สำหรับ mixed-schema hard stop, per-page account guard, nested payment/logistics parsing และ category breadcrumb parsing
-
-## v2.4.9 Category Queue safeguard
-
-Cursor-based enrichment moves through uncategorized products once per run, so failed products are reported and can be retried on a later manual run without trapping the queue at the first 100 records. The next cursor combines newest order row ID, shop ID, and item ID. Switching Shopee account or receiving HTTP 401/403/anti-fraud pauses enrichment rather than continuing.
+Connector 2.4.9 เพิ่ม regression สำหรับ mixed-schema hard stop, per-page account guard, nested payment/logistics parsing และ category breadcrumb parsing

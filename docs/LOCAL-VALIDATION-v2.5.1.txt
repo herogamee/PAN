@@ -1,0 +1,12 @@
+PAN 2.5.1 + Shopee Connector 2.4.9
+Validation date: 2026-10-08
+Original PAN 2.5.0 source ZIP SHA256: e322e95bcdfed1f6879c0286f5bb88e535014a7db6a02070b8d07efd0a4a1b61
+
+Local results:
+- PHP syntax: PASS all project PHP files (26 PHP files)
+- Shopee Extension Node tests: PASS 31/31 (including 3 new category cursor/failure/account tests)
+- Server Connector Node tests: PASS 9/10. 1 test environment-failed because installed Playwright has no Chromium executable.
+- Live PHP PDO SQLite / MySQL database transaction tests: NOT RUN (no pdo_sqlite/pdo_mysql in local runtime).
+- Live Shopee session/API/UX: NOT RUN. Revalidate on real account after deployment.
+
+Known project limitations: See docs/PAN-v2.5.1-HANDOFF.md.

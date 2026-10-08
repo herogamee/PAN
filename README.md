@@ -46,7 +46,7 @@ PAN 2.5.0 ปรับแกนข้อมูลก่อนเพิ่ม Mar
 3. **Product Explorer 2.0** — filter ร้าน/หมวด/บัญชี/ปี, sort หลายแบบ, KPI ร้าน/หมวด/จำนวน/ยอดซื้อ และ Product Family foundation
 4. **Product/Category Enrichment** — งานแยกจาก Order Sync เพื่อให้ endpoint สินค้าเปลี่ยนแล้วไม่ทำให้ Order Sync พัง
 
-สำหรับ hotfix ล่าสุดดู `RELEASE-NOTES-v2.5.1.md` (v2.5.1 + Connector v2.4.9); รุ่นฐานดู `RELEASE-NOTES-v2.5.0.md` และขั้นตอน upgrade ใน `UPGRADE-2.4.1-TO-2.5.0.md`
+ดูรายละเอียดใน `RELEASE-NOTES-v2.5.0.md` และขั้นตอน upgrade ใน `UPGRADE-2.4.1-TO-2.5.0.md`
 
 ## เลือก SQLite หรือ MySQL/MariaDB
 
@@ -270,9 +270,7 @@ Character: **น้องแพน**
 Role: **Marketplace & Commerce Assistant**  
 Brand: **itoom.work**
 
-## Initial GitHub import / source hygiene
 
-- This repository contains the application, dashboard, Shopee extension, Node server connector, tests, and install/migration docs.
-- Do not commit production `storage/config.php`, SQLite/WAL/SHM, `*.env`, Playwright profiles or `node_modules`.
-- Use `npm ci` in `connectors/shopee-server` to restore Node dependencies.
-- Release-specific maintenance details are in `RELEASE-NOTES-v2.5.1.md`.
+## PAN 2.5.1 maintenance update
+
+See [`docs/PAN-v2.5.1-HANDOFF.md`](docs/PAN-v2.5.1-HANDOFF.md) for 2.5.1 fixes, test/deployment instructions, and explicit production-validation limitations. Historical v2.5.0 release notes are retained unchanged.
