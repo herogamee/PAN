@@ -112,6 +112,22 @@ try {
     $complete=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
         'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00']);
     test_check($complete['detail_state']==='complete','complete only when required detail fields exist');
+    $numeric=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'payment_method'=>'92','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00']);
+    test_check($numeric['detail_state']==='partial' && in_array('payment_method',$numeric['missing_fields'],true),
+        'numeric Shopee payment code is unresolved, never complete');
+    $codeQueue=repair_queue($db,'CI-A',10,false,false,0);
+    test_check($codeQueue['total']===1 && $codeQueue['rows'][0]['order_no']==='CI-A1',
+        'unresolved numeric payment detail is eligible for manual Repair');
+    // Previous PAN releases marked numeric codes as complete; queue must recover them.
+    $db->exec("UPDATE orders SET detail_state='complete' WHERE order_no='CI-A1'");
+    $legacyQueue=repair_queue($db,'CI-A',10,false,false,0);
+    test_check($legacyQueue['total']===1 && $legacyQueue['rows'][0]['order_no']==='CI-A1',
+        'legacy complete + raw numeric method still eligible for repair');
+    $named=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'payment_method'=>'ShopeePay','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00']);
+    test_check($named['detail_state']==='complete' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
+        'recognized readable method can complete and leaves manual Repair queue');
     $rq=repair_queue($db,'CI-B',10,false,false,0);
     test_check($rq['total']===1 && $rq['rows'][0]['order_no']==='CI-B1',
         'Repair queue is scoped to account with pending records');

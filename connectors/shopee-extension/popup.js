@@ -16,7 +16,7 @@ $('repairAllBtn').onclick=async()=>{if(!confirm('จะเติม Order Detail
 $('pause').onclick=()=>chrome.runtime.sendMessage({type:'PAUSE_SYNC'});
 $('reset').onclick=async()=>{if(!currentAccount)return;await chrome.runtime.sendMessage({type:'RESET_SYNC',accountId:String(currentAccount.userid)});render({});};
 $('copyError').onclick=()=>copyText(String(currentState.error||currentState.lastRepairError||currentState.status||'ไม่มี error'));
-$('copyDebug').onclick=()=>copyText(JSON.stringify({version:'2.4.9',account:currentAccount,state:currentState},null,2));
+$('copyDebug').onclick=()=>copyText(JSON.stringify({version:'2.4.10',account:currentAccount,state:currentState},null,2));
 chrome.runtime.onMessage.addListener(m=>{if(m?.type==='SYNC_PROGRESS'&&(!currentAccount||String(m.state?.accountId||'')===String(currentAccount.userid)))render(m.state)});
 chrome.runtime.onMessage.addListener(m=>{if(m?.type==='SYNC_ERROR')log(m.error)});
 (async()=>{const c=await chrome.storage.local.get(['hubUrl','apiKey']);$('hub').value=c.hubUrl||'https://pan.itoom.work';$('apiKey').value=c.apiKey||'';await refreshAccount()})();

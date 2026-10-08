@@ -1,6 +1,6 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-08 (Asia/Bangkok) · **PAN Core v2.5.2 + Shopee Connector v2.4.9** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-08 (Asia/Bangkok) · **PAN Core v2.5.3 + Shopee Connector v2.4.10** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
 
@@ -9,7 +9,7 @@
 - [GitHub Issues — เปิดอยู่](https://github.com/herogamee/PAN/issues)
 - [Acceptance & Test Matrix](docs/ACCEPTANCE-MATRIX.md) — Test case, เกณฑ์ผ่าน, ผลจริง และหลักฐาน
 - [Staging Acceptance Runbook](docs/STAGING-ACCEPTANCE.md) — ขั้นตอนทดสอบ XAMPP3/Ubuntu และเก็บผลอย่างปลอดภัย
-- [PAN 2.5.1 Handoff](docs/PAN-v2.5.1-HANDOFF.md) — ขอบเขต release ล่าสุดและข้อจำกัด
+- [PAN 2.5.3 Release Notes](RELEASE-NOTES-v2.5.3.md) — ขอบเขต release ล่าสุดและข้อจำกัด
 - [GitHub CI](.github/workflows/ci.yml) — PHP lint, Shopee Extension regression, Server Connector regression
 
 ## สรุป 7 เฟส

@@ -1,0 +1,20 @@
+PAN v2.5.3 / Shopee Connector v2.4.10 — local baseline
+Date: 2026-10-08
+Scope: payment_method display/parser/analytics, detail partial state, manual repair queue.
+
+LOCAL:
+- PHP syntax: see final build validation
+- PHP payment_method formatter fixtures: PASS
+- Shopee Extension regression: PASS 33/33
+- JS syntax background/popup: PASS
+- SQL queue predicate: see SQLite/MySQL CI integration
+- DB PDO SQLite/MySQL live local tests: blocked (drivers unavailable in local PHP)
+- Shopee real API mapping codes 6 and 92: NOT VERIFIED, no guessed mapping
+- Production deployment / browser acceptance: NOT VERIFIED
+
+Run in GitHub CI:
+- PHP lint + tests/payment-method.php
+- synthetic PDO SQLite + MariaDB tests/db-integration.php sqlite|mysql
+- Node extension + server-connector tests
+
+Before production: staging backup, smoke tests with authorized Shopee account, verify actual label source where provided and restore rehearsal.

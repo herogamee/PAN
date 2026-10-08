@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__.'/payment_method.php';
+
 function analytics_scalar(PDO $db,string $sql,array $params=[]): float|int|string {
     $st=$db->prepare($sql);$st->execute($params);$v=$st->fetchColumn();return $v===false?0:$v;
 }
@@ -68,8 +70,8 @@ function analytics_snapshot(PDO $db): array {
     $topProducts=analytics_rows($db,"SELECT i.product_key,MAX(i.product_name) product_name,MAX(i.variant_name) variant_name,MAX(i.image_url) image_url,COUNT(DISTINCT i.order_id) orders,COALESCE(SUM(i.quantity),0) qty,COALESCE(SUM($productSpendExpr),0) spent,COALESCE(AVG(CASE WHEN i.actual_unit_price>0 THEN i.actual_unit_price WHEN i.net_unit_price>0 THEN i.net_unit_price ELSE i.purchase_price END),0) avg_price FROM order_items i JOIN orders o ON o.id=i.order_id WHERE $purchaseO GROUP BY i.product_key ORDER BY spent DESC,qty DESC LIMIT 15");
     foreach($topProducts as &$r){$r['orders']=(int)$r['orders'];$r['qty']=(int)$r['qty'];$r['spent']=(float)$r['spent'];$r['avg_price']=(float)$r['avg_price'];}unset($r);
 
-    $payments=analytics_rows($db,"SELECT CASE WHEN TRIM(COALESCE(payment_method,''))='' THEN 'ไม่ทราบ' ELSE payment_method END label,COUNT(*) orders,COALESCE(SUM(total_paid),0) spent FROM orders WHERE $purchase GROUP BY label ORDER BY spent DESC,orders DESC LIMIT 12");
-    foreach($payments as &$r){$r['orders']=(int)$r['orders'];$r['spent']=(float)$r['spent'];}unset($r);
+    $payments=analytics_rows($db,"SELECT CASE WHEN TRIM(COALESCE(payment_method,''))='' THEN 'ไม่ทราบช่องทางการชำระเงิน' ELSE payment_method END label,COUNT(*) orders,COALESCE(SUM(total_paid),0) spent FROM orders WHERE $purchase GROUP BY label ORDER BY spent DESC,orders DESC LIMIT 12");
+    foreach($payments as &$r){$r['label']=pan_payment_method_label((string)$r['label']);$r['orders']=(int)$r['orders'];$r['spent']=(float)$r['spent'];}unset($r);
 
     $carriers=analytics_rows($db,"SELECT CASE WHEN TRIM(COALESCE(shipping_carrier,''))='' THEN 'ไม่ทราบ' ELSE shipping_carrier END label,COUNT(*) orders,COALESCE(SUM(total_paid),0) spent FROM orders WHERE $purchase GROUP BY label ORDER BY orders DESC,spent DESC LIMIT 12");
     foreach($carriers as &$r){$r['orders']=(int)$r['orders'];$r['spent']=(float)$r['spent'];}unset($r);

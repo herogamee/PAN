@@ -1,6 +1,6 @@
 # PAN — Acceptance & Test Matrix
 
-> อัปเดต 2026-10-08 · baseline: **PAN 2.5.2 / Shopee Connector 2.4.9** · [Roadmap](../ROADMAP.md).
+> อัปเดต 2026-10-08 · baseline: **PAN 2.5.3 / Shopee Connector 2.4.10** · [Roadmap](../ROADMAP.md).
 >
 > **อย่าสับสน**: automated CI ผ่าน หมายถึง source/tests ที่รันได้ผ่านเท่านั้น **ไม่ได้** หมายถึงผ่าน Shopee live API, browser login, ข้อมูลร้านจริง หรือ production DB.
 
@@ -26,6 +26,7 @@
 | PAN-P1-04 | [#1](https://github.com/herogamee/PAN/issues/1) | Account switch, unknown/mixed schema, anti-fraud | No cross-account write or unsafe checkpoint on failure | Pending |
 | PAN-P1-05 | [#1](https://github.com/herogamee/PAN/issues/1) | Cancelled order + changed item snapshot | Cancelled purchase excluded, stale items reconciled only on verified complete snapshot | Pending |
 | PAN-P1-06 | [#1](https://github.com/herogamee/PAN/issues/1) | Category queue across pages, fail one item | Later items processed, no infinite repeats, Order Sync unaffected | Pending |
+| PAN-P2-00 | [#2](https://github.com/herogamee/PAN/issues/2) | Numeric Shopee payment codes 6/92 | Code now treats numeric methods as unknown, favors names in Detail and leaves manual Repair available; meaning of codes remains unverified | Pending live evidence |
 | PAN-P2-01 | [#2](https://github.com/herogamee/PAN/issues/2) | Live payment / shipping / tracking / timestamps | UI values agree with sanitized real API examples; no invented data | Pending |
 | PAN-P2-02 | [#2](https://github.com/herogamee/PAN/issues/2) | Detail state and repair retry | `pending/partial/error/complete` distinguish missing vs failed vs done | Pending |
 | PAN-P2-03 | [#2](https://github.com/herogamee/PAN/issues/2) | Multi-page Repair/resume | No skipped pages, no cross-account mutation, failed queue recoverable | Pending |

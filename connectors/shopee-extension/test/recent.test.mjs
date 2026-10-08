@@ -299,6 +299,32 @@ test('v2.4.8 detail parser reads nested payment and logistics labels and records
   assert.equal(meta.detail_missing_fields,'');
 });
 
+test('payment detail prioritizes readable label over numeric Shopee codes, and retains raw provenance',async()=>{
+  const f=await fixture();
+  const meta=f.ctx.detailMeta({data:{payment_info:{payment_method:92,payment_channel:{display_name:'ShopeePay'}},
+    shipping:{logistics_channel:{name:'SPX Express'}},pc_processing_info:{complete_time:1788000000}}});
+  assert.equal(meta.payment_method,'ShopeePay');
+  assert.equal(meta.detail_missing_fields,'');
+  const origin=JSON.parse(meta.metadata_json);
+  assert.equal(origin.codes.payment_method,'92');
+  assert.match(origin.sources.payment,/payment_channel/);
+  const named=f.ctx.detailMeta({data:{payment_info:{payment_method:6,payment_method_name:'SPayLater'},
+    shipping:{carrier_name:'Courier'},pc_processing_info:{complete_time:1788000000}}});
+  assert.equal(named.payment_method,'SPayLater');
+  assert.equal(JSON.parse(named.metadata_json).codes.payment_method,'6');
+});
+
+test('numeric-only payment method 6 or 92 stays unresolved and must not mark detail complete',async()=>{
+  const f=await fixture();
+  for(const code of [6,92]){
+    const meta=f.ctx.detailMeta({data:{payment_info:{payment_method:code},
+      shipping:{carrier_name:'Courier'},pc_processing_info:{complete_time:1788000000}}});
+    assert.equal(meta.payment_method,String(code));
+    assert.match(meta.detail_missing_fields,/payment_method/);
+    assert.equal(JSON.parse(meta.metadata_json).codes.payment_method,String(code));
+  }
+});
+
 test('v2.4.8 category parser accepts Shopee category breadcrumb arrays',async()=>{
   const f=await fixture();
   const cat=f.ctx.extractCategoryInfo({data:{item:{categories:[{catid:1,display_name:'บ้านและสวน'},{catid:2,display_name:'เครื่องมือ'}]}}});

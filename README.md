@@ -1,4 +1,4 @@
-# PAN 2.5.2 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.3 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -14,7 +14,7 @@
 
 **เริ่มติดตามงาน 7 เฟสใน GitHub อย่างเป็นทางการ:** [ROADMAP.md](ROADMAP.md) · [Issues #1–#7](https://github.com/herogamee/PAN/issues) · [Acceptance/Test Matrix](docs/ACCEPTANCE-MATRIX.md) · [Staging Runbook](docs/STAGING-ACCEPTANCE.md).
 
-PAN v2.5.2 + Connector v2.4.9 มี source และ automated CI ผ่านแล้ว แต่ **ยังไม่ผ่าน Production Acceptance** จนกว่าจะตรวจ Shopee real-session, Payment/Shipping/Repair, database transactions และ restore ตาม [Phase 1](https://github.com/herogamee/PAN/issues/1). **ห้ามตีความว่า CI pass = live pass.**
+PAN v2.5.3 + Connector v2.4.10 มี source และ automated CI ผ่านแล้ว แต่ **ยังไม่ผ่าน Production Acceptance** จนกว่าจะตรวจ Shopee real-session, Payment/Shipping/Repair, database transactions และ restore ตาม [Phase 1](https://github.com/herogamee/PAN/issues/1). **ห้ามตีความว่า CI pass = live pass.**
 
 Shopee เป็นเพียง Connector ตัวแรกของ PAN ไม่ใช่ชื่อของระบบหลัก เพื่อให้ในอนาคตเพิ่ม Lazada, TikTok Shop, LINE Shopping หรือ Marketplace อื่นได้โดยไม่ต้องเปลี่ยนชื่อโปรเจกต์อีก
 
@@ -64,6 +64,17 @@ PAN 2.5.0 ปรับแกนข้อมูลก่อนเพิ่ม Mar
 - [Login Throttle Tests](tests/login-throttle.php)
 
 **สถานะ:** Code/CI release candidate; Shopee real-session + historical production DB acceptance ยังอยู่ใน [Phase 1](https://github.com/herogamee/PAN/issues/1). การทดสอบ synthetic ใน CI ไม่ใช่การผ่าน production acceptance
+
+## PAN v2.5.3 — ช่องทางการชำระเงิน
+
+แก้ปัญหาคอลัมน์ **ชำระเงิน** แสดงรหัส Shopee `6` / `92` ตรง ๆ: ปรับชื่อเป็น **ช่องทางการชำระเงิน** และกรณีมีแต่รหัสจะแสดง **ยังไม่ทราบช่องทาง (รหัส Shopee 6/92)** ไม่เดาว่าเป็น ShopeePay, SPayLater, COD หรือสถานะจ่ายสำเร็จ
+
+- ตาราง Order, ตัวกรอง และ Analytics แสดงค่าเข้าใจง่ายโดยไม่เปลี่ยนค่า raw ในฐานข้อมูลเดิม
+- Connector v2.4.10 เลือกชื่อช่องทางจาก Order Detail ก่อนรหัสตัวเลข; เก็บรหัสใน metadata เมื่อมีข้อมูล
+- รหัสตัวเลขล้วนคือ Detail ที่ยังไม่สมบูรณ์ รวมถึงข้อมูลเก่าที่ถูกแสดงว่า Complete; เลือกเติมข้อมูลใหม่ได้ด้วยคำสั่ง **เติมรายละเอียดที่ยังขาด** โดยไม่ยิง Shopee API อัตโนมัติ
+- ตัวเลขนี้ไม่ใช่ยอดเงินและไม่ได้แสดงสถานะการชำระเงิน
+
+ดู [Release Notes 2.5.3](RELEASE-NOTES-v2.5.3.md) และ [Phase 2 — Payment/Shipping/Repair](https://github.com/herogamee/PAN/issues/2) ซึ่งยังต้องทดสอบกับบัญชี Shopee จริง
 
 ## เลือก SQLite หรือ MySQL/MariaDB
 
@@ -282,7 +293,7 @@ PAN
 
 ---
 
-Version: **PAN 2.5.2**  
+Version: **PAN 2.5.3**  
 Character: **น้องแพน**  
 Role: **Marketplace & Commerce Assistant**  
 Brand: **itoom.work**

@@ -1,5 +1,5 @@
 const DEFAULT_HUB='https://pan.itoom.work';
-const VERSION='2.4.9';
+const VERSION='2.4.10';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const txt=v=>v==null?'':String(v);
 const num=v=>{const n=Number(v);if(!Number.isFinite(n))return 0;return Math.abs(n)>=100000?n/100000:n};
@@ -95,6 +95,33 @@ function cleanText(v){if(v==null||typeof v==='object')return '';const s=String(v
 function normalizeFamilyName(v){return txt(v).toLowerCase().replace(/[\s\u00a0]+/g,' ').replace(/[|•·]+/g,' ').trim().slice(0,220);}
 function objectText(v){if(v==null)return '';if(typeof v!=='object')return cleanText(v);for(const k of ['display_name','name','label','text','title','channel_name','method_name','carrier_name','logistics_channel_name']){const x=cleanText(v?.[k]);if(x)return x;}return '';}
 function deepTextWhere(obj,names,predicate,maxDepth=8){const f=deepFindWhere(obj,names,predicate,maxDepth);if(f)return {value:objectText(f.value)||cleanText(f.value),path:f.path};const wanted=new Set(names),seen=new Set();function walk(v,path,depth){if(depth>maxDepth||v==null||typeof v!=='object'||seen.has(v))return null;seen.add(v);for(const [k,val] of Object.entries(v)){const pp=path?path+'.'+k:k;if(wanted.has(k)&&(!predicate||predicate(pp,k))){const text=objectText(val);if(text)return {value:text,path:pp};}if(val&&typeof val==='object'){const z=walk(val,pp,depth+1);if(z)return z;}}return null;}return walk(obj,'',0);}
+// Prefer actual human-readable method names over Shopee's opaque payment_method integer.
+// Numeric codes (e.g. 6/92) are NOT mapped without a verified Shopee contract.
+function paymentDetailInfo(obj,maxDepth=8){
+  const keys=new Set(['payment_method','payment_method_name','payment_channel_name','payment_channel','payment_display_name','checkout_payment_method','checkout_payment_method_name','method_name']);
+  const explicitKeys=new Set(['payment_method_name','payment_channel_name','payment_display_name','checkout_payment_method_name','method_name']);
+  const seen=new Set();let explicit=null,descriptive=null,code=null;
+  function walk(v,path,depth){
+    if(depth>maxDepth||!v||typeof v!=='object'||seen.has(v))return;
+    seen.add(v);
+    for(const [key,val] of Object.entries(v)){
+      const p=path?path+'.'+key:key;
+      if(keys.has(key)&&/(payment|checkout|pay_)/i.test(p)){
+        const candidate=objectText(val)||cleanText(val);
+        if(candidate){
+          const result={value:candidate,path:p};
+          if(/^[0-9]+$/.test(candidate)){if(!code)code=result;}
+          else if(explicitKeys.has(key)||(val&&typeof val==='object')){if(!explicit)explicit=result;}
+          else if(!descriptive)descriptive=result;
+        }
+      }
+      if(val&&typeof val==='object')walk(val,p,depth+1);
+    }
+  }
+  walk(obj,'',0);
+  const result=explicit||descriptive||code;
+  return result?{...result,rawCode:code?.value||''}:null;
+}
 function detailMeta(json){
   const d=json?.data||{};
   const created=firstEpoch(d,['pc_processing_info.create_time','create_time','order_create_time','info_card.create_time','info_card.order_create_time']);
@@ -102,13 +129,13 @@ function detailMeta(json){
   const completed=firstEpoch(d,['pc_processing_info.complete_time','complete_time','completed_time','order_complete_time','complete_info.complete_time']);
   const deliveredFound=deepFindWhere(d,['delivered_time','delivery_time','actual_delivery_time','delivery_completed_time','buyer_received_time','received_time','delivery_timestamp'],(p,k)=>/(^|\.)(shipping|shipment|parcel|tracking|logistic|fulfillment|delivery)(\.|$)/i.test(p)||/^(delivered_time|delivery_time|actual_delivery_time|delivery_completed_time|buyer_received_time)$/i.test(k));
   const delivered=deliveredFound?normalizeEpochSeconds(deliveredFound.value):null;
-  const payment=deepTextWhere(d,['payment_method','payment_method_name','payment_channel_name','payment_channel','payment_display_name','checkout_payment_method','method_name'],p=>/(payment|checkout|pay_)/i.test(p));
+  const payment=paymentDetailInfo(d);
   const carrier=deepTextWhere(d,['shipping_carrier','carrier_name','logistics_channel_name','shipping_channel_name','logistics_channel','logistic_channel','channel_name'],p=>/(shipping|shipment|parcel|tracking|logistic|fulfillment|delivery)/i.test(p));
   const tracking=deepTextWhere(d,['tracking_number','tracking_no','tracking_number_list','tracking_code','tracking_id'],p=>/(tracking|shipping|shipment|parcel|logistic)/i.test(p));
   const parcelCount=Number(d?.shipping?.num_parcels??d?.num_parcels??d?.parcel_count??(Array.isArray(d?.package_list)?d.package_list.length:(Array.isArray(d?.packages)?d.packages.length:0)))||0;
   const meta={order_created_at:formatBangkok(created?.epoch),paid_at:formatBangkok(paid?.epoch),delivered_at:formatBangkok(delivered),completed_at:formatBangkok(completed?.epoch),delivery_date_source:delivered?`detail.${deliveredFound.path}`:(completed?.epoch?'order_complete_fallback':''),payment_method:cleanText(payment?.value),shipping_carrier:cleanText(carrier?.value),tracking_number:cleanText(tracking?.value),parcel_count:parcelCount,shipping_fee:deepMoney(d,['actual_shipping_fee','buyer_shipping_fee'])??0,voucher_discount:deepMoney(d,['voucher_discount','voucher_discount_amount'])??0,coins_discount:deepMoney(d,['coins_discount','coin_discount'])??0,platform_discount:deepMoney(d,['platform_discount'])??0,detail_enriched:1,detail_error:''};
-  const missing=[];for(const k of ['payment_method','shipping_carrier','completed_at'])if(!meta[k])missing.push(k);meta.detail_missing_fields=missing.join(',');
-  meta.metadata_json=JSON.stringify({sources:{created:created?.path||'',paid:paid?.path||'',delivered:deliveredFound?.path||'',completed:completed?.path||'',payment:payment?.path||'',carrier:carrier?.path||'',tracking:tracking?.path||''},values:{order_created_at:meta.order_created_at,paid_at:meta.paid_at,delivered_at:meta.delivered_at,completed_at:meta.completed_at,payment_method:meta.payment_method,shipping_carrier:meta.shipping_carrier,tracking_number:meta.tracking_number,parcel_count:meta.parcel_count},missing});
+  const missing=[];for(const k of ['payment_method','shipping_carrier','completed_at'])if(!meta[k]||(k==='payment_method'&&/^[0-9]+$/.test(meta[k])))missing.push(k);meta.detail_missing_fields=missing.join(',');
+  meta.metadata_json=JSON.stringify({sources:{created:created?.path||'',paid:paid?.path||'',delivered:deliveredFound?.path||'',completed:completed?.path||'',payment:payment?.path||'',carrier:carrier?.path||'',tracking:tracking?.path||''},codes:{payment_method:payment?.rawCode||''},values:{order_created_at:meta.order_created_at,paid_at:meta.paid_at,delivered_at:meta.delivered_at,completed_at:meta.completed_at,payment_method:meta.payment_method,shipping_carrier:meta.shipping_carrier,tracking_number:meta.tracking_number,parcel_count:meta.parcel_count},missing});
   return meta;
 }
 function extractBestListDate(d){for(const [p,label] of [['info_card.order_create_time','order creation time'],['info_card.create_time','order creation time'],['order_create_time','order creation time'],['create_time','order creation time'],['info_card.pay_time','payment time'],['pay_time','payment time'],['payment_time','payment time'],['shipping.tracking_info.ctime','shipping activity time']]){const e=normalizeEpochSeconds(getPath(d,p));if(e)return {epoch:e,label,path:p};}return null;}
@@ -145,7 +172,7 @@ async function processSyncRecords(raw,account,hub,scanId,pageUrl,seenOrderNos=[]
     else{ignored++;const reason=n.ignoredReason||'unknown';reasonCounts[reason]=(reasonCounts[reason]||0)+1;}
   }
   const structural=['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].reduce((s,k)=>s+(reasonCounts[k]||0),0);
-  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรงกับ Normalizer 2.4.9 · หยุดก่อนเลื่อน checkpoint · structural=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · sample=${JSON.stringify(raw.find(x=>{const n=normalizeOrder(x,account);return ['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].includes(n.ignoredReason)})||raw[0]).slice(0,6000)}`);
+  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรงกับ Normalizer 2.4.10 · หยุดก่อนเลื่อน checkpoint · structural=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · sample=${JSON.stringify(raw.find(x=>{const n=normalizeOrder(x,account);return ['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].includes(n.ignoredReason)})||raw[0]).slice(0,6000)}`);
   let cancelledResult={deleted:0},importResult={};
   if(cancelledNos.length)cancelledResult=await postCancelled(hub,String(account.userid),cancelledNos)||{deleted:0};
   if(batch.length)importResult=await postBatch(hub,batch,{url:pageUrl,scanId,jobType:options.jobType||'sync'})||{};

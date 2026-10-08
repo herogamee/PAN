@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.2 + Shopee Connector v2.4.9**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.3 + Shopee Connector v2.4.10**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.2`, Extension manifest เป็น `2.4.9`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.3`, Extension manifest เป็น `2.4.10`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -59,7 +59,7 @@ node --test connectors/shopee-extension/test/*.test.mjs
 
 1. สร้างฐานข้อมูลทดสอบเปล่า **ทั้ง** SQLite และ MySQL/MariaDB (ถ้าใช้งานทั้งสอง driver)
 2. Restore สำเนา PAN 2.5.0 ที่ไม่ใช่ live DB เข้า staging และตรวจจำนวน `accounts`, `orders`, `order_items`, `collector_batches`
-3. ติดตั้ง source v2.5.2 แล้วตรวจ migration schema และ compatibility จากรุ่นเก่า
+3. ติดตั้ง source v2.5.3 แล้วตรวจ migration schema และ compatibility จากรุ่นเก่า
 4. Import ชุด synthetic ที่มี: 2 accounts, 2 orders ที่มี line-item overlap, cancelled record, status update, uncertain order snapshot
 5. ตรวจ account-scoped unique counts; snapshot สมบูรณ์จึงจะลบ stale items ได้; uncertain page ไม่ขยับ checkpoint
 6. ลอง transaction failure แล้วตรวจว่าไม่ทิ้งครึ่ง batch; restore backup แล้ว verify counts และ foreign references
@@ -67,7 +67,7 @@ node --test connectors/shopee-extension/test/*.test.mjs
 
 ## 4. Shopee real-session acceptance (ได้รับอนุญาตเท่านั้น)
 
-1. ใน staging ตั้ง PAN API URL + key ที่ไม่ใช่ของ production และโหลด Extension v2.4.9
+1. ใน staging ตั้ง PAN API URL + key ที่ไม่ใช่ของ production และโหลด Extension v2.4.10
 2. Log in Shopee account ของผู้ทดสอบเองบน browser; ตรวจ account ID ก่อน sync
 3. ทดสอบ **Recent Sync**: เปรียบ unique purchased orders / cancelled records / upserts อย่างมีเหตุผล ไม่ใช้ record counter แทน PAN unique orders
 4. ทดสอบ **Full Sync** ใน staging: record structure unknown/mixed และ account switch ต้องหยุดแบบ fail-closed
@@ -87,7 +87,7 @@ node --test connectors/shopee-extension/test/*.test.mjs
 - เก็บรายงานใน [Issue #1](https://github.com/herogamee/PAN/issues/1) เป็น sanitized summaries พร้อม Case IDs; update [Acceptance Matrix](ACCEPTANCE-MATRIX.md)
 - ห้ามอัปโหลด credentials, raw order data, Shopee buyer info หรือ production dumps ลง Public GitHub
 
-## 7. PHP synthetic integration and login lockout regressions (added in v2.5.2)
+## 7. PHP synthetic integration and login lockout regressions (added in v2.5.3)
 
 In a **checkout/test copy** (never live PAN storage), with PHP 8.1+ and pdo_sqlite enabled:
 
@@ -101,4 +101,11 @@ Remove-Item Env:PAN_CI_TEST
 
 GitHub Actions also runs MySQL tests against its **dedicated disposable MariaDB service** database `pan_ci_test`. Local MySQL integration refuses any other database name or remote host; never point synthetic tests to your PAN production DB.
 
-Login v2.5.2 requires the login page's new CSRF hidden field; refresh old login tabs. Rate-limit counter files are stored inside `storage/auth-throttle/`; this directory must be writable by PHP, denied from HTTP access, and ignored by Git. Locked login responds HTTP 429 and Retry-After. When behind reverse proxies, validate shared-client-IP behavior before public promotion; forwarded headers are intentionally not trusted blindly.
+Login v2.5.3 requires the login page's new CSRF hidden field; refresh old login tabs. Rate-limit counter files are stored inside `storage/auth-throttle/`; this directory must be writable by PHP, denied from HTTP access, and ignored by Git. Locked login responds HTTP 429 and Retry-After. When behind reverse proxies, validate shared-client-IP behavior before public promotion; forwarded headers are intentionally not trusted blindly.
+
+## 8. ตรวจช่องทางการชำระเงิน (PAN 2.5.3)
+- [ ] คอลัมน์ Order, ตัวกรอง และ Analytics ต้องใช้ชื่อ **ช่องทางการชำระเงิน** (ไม่ใช่สถานะหรือยอดจ่าย)
+- [ ] รหัสเลข 6/92 ในข้อมูลเก่าแสดงเป็น **ยังไม่ทราบช่องทาง (รหัส Shopee N)** และ Repair queue หาได้แม้ Detail เคย complete
+- [ ] ใช้ Shopee session ที่ได้รับอนุญาตกับ Connector 2.4.10 แล้วทดสอบด้วยข้อมูลจำลอง/ปกปิดตัวตน: ถ้า Shopee ส่งชื่อให้ใช้ชื่อนั้น; ถ้ามีเพียงรหัสให้คงสถานะ partial
+- [ ] ห้ามตั้งชื่อช่องทางจากรหัส 6/92 โดยไม่มีหลักฐาน mapping ที่เชื่อถือได้
+- [ ] ปฏิเสธการ Deploy ถ้า Regression หรือ Transaction Test ล้มเหลว

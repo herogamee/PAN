@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/payment_method.php';
 
 function db_driver(PDO $db): string { return (string)$db->getAttribute(PDO::ATTR_DRIVER_NAME); }
 
@@ -369,7 +370,7 @@ function enrich_order_payload(PDO $db,array $r):array {
     if(array_key_exists('order_status',$r)){$sets[]='order_status=:order_status';$params[':order_status']=(string)$r['order_status'];}
     if(array_key_exists('list_type',$r)){$sets[]='list_type=:list_type';$params[':list_type']=(int)$r['list_type'];}
     $created=(string)($r['order_created_at']??'');if($created!==''&&preg_match('/^(20\\d{2}-\\d{2}-\\d{2})/',$created,$m)){$sets[]='order_date=:order_date';$params[':order_date']=$m[1];}
-    $missing=[];foreach(['payment_method','shipping_carrier','completed_at'] as $f)if(trim((string)($r[$f]??''))==='')$missing[]=$f;
+    $missing=[];foreach(['payment_method','shipping_carrier','completed_at'] as $f){$value=trim((string)($r[$f]??''));if($value===''||($f==='payment_method'&&pan_payment_method_is_code($value)))$missing[]=$f;}
     $detailError=trim((string)($r['detail_error']??''));$state=$detailError!==''?'error':($missing?'partial':'complete');
     $sets[]='detail_state=:detail_state';$params[':detail_state']=$state;$sets[]='detail_missing_fields=:detail_missing_fields';$params[':detail_missing_fields']=implode(',',$missing);
     $sets[]='detail_attempted_at=CURRENT_TIMESTAMP';$sets[]='detail_updated_at=CURRENT_TIMESTAMP';$sets[]='updated_at=CURRENT_TIMESTAMP';$sets[]='validation_state="verified_v200"';$sets[]='detail_enriched=1';
@@ -381,7 +382,12 @@ function repair_queue(PDO $db,string $accountId,int $limit=5000,bool $includeLeg
     ensure_schema_v200($db);$accountId=trim($accountId);if($accountId==='')throw new RuntimeException('account_id required');$limit=max(1,min(1000,$limit));$offset=max(0,$offset);
     $where='COALESCE(list_type,0)<>4 AND (source_account_id=:aid';$params=[':aid'=>$accountId];
     if($includeLegacy)$where.=' OR COALESCE(source_account_id,"")=""';$where.=')';
-    if(!$all)$where.=" AND (COALESCE(detail_enriched,0)=0 OR COALESCE(detail_state,'pending') IN ('pending','error','partial'))";
+    // Legacy 'complete' rows may still hold raw numeric Shopee payment codes.
+    // SQLite GLOB and MySQL REGEXP are equivalent to 'ASCII digits only' here.
+    $numericPayment=db_driver($db)==='mysql'
+        ? "TRIM(COALESCE(payment_method,'')) REGEXP '^[0-9]+$'"
+        : "(TRIM(COALESCE(payment_method,''))<>'' AND TRIM(COALESCE(payment_method,'')) NOT GLOB '*[^0-9]*')";
+    if(!$all)$where.=" AND (COALESCE(detail_enriched,0)=0 OR COALESCE(detail_state,'pending') IN ('pending','error','partial') OR ($numericPayment))";
     $count=$db->prepare("SELECT COUNT(*) FROM orders WHERE $where");$count->execute($params);$total=(int)$count->fetchColumn();
     $st=$db->prepare("SELECT order_no,list_type,source_account_id,source_account_username,detail_enriched,detail_state,detail_error FROM orders WHERE $where ORDER BY CASE WHEN COALESCE(detail_enriched,0)=0 THEN 0 WHEN detail_state='error' THEN 1 ELSE 2 END,id DESC LIMIT $limit OFFSET $offset");$st->execute($params);
     return ['rows'=>$st->fetchAll(),'total'=>$total,'offset'=>$offset,'limit'=>$limit,'has_more'=>$offset+$limit<$total];
