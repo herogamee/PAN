@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.1 + Shopee Connector v2.4.9**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.2 + Shopee Connector v2.4.9**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.1`, Extension manifest เป็น `2.4.9`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.2`, Extension manifest เป็น `2.4.9`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -59,7 +59,7 @@ node --test connectors/shopee-extension/test/*.test.mjs
 
 1. สร้างฐานข้อมูลทดสอบเปล่า **ทั้ง** SQLite และ MySQL/MariaDB (ถ้าใช้งานทั้งสอง driver)
 2. Restore สำเนา PAN 2.5.0 ที่ไม่ใช่ live DB เข้า staging และตรวจจำนวน `accounts`, `orders`, `order_items`, `collector_batches`
-3. ติดตั้ง source v2.5.1 แล้วตรวจ migration schema และ compatibility จากรุ่นเก่า
+3. ติดตั้ง source v2.5.2 แล้วตรวจ migration schema และ compatibility จากรุ่นเก่า
 4. Import ชุด synthetic ที่มี: 2 accounts, 2 orders ที่มี line-item overlap, cancelled record, status update, uncertain order snapshot
 5. ตรวจ account-scoped unique counts; snapshot สมบูรณ์จึงจะลบ stale items ได้; uncertain page ไม่ขยับ checkpoint
 6. ลอง transaction failure แล้วตรวจว่าไม่ทิ้งครึ่ง batch; restore backup แล้ว verify counts และ foreign references
@@ -86,3 +86,19 @@ node --test connectors/shopee-extension/test/*.test.mjs
 - **NO-GO**: มี false Complete, schema error แล้ว checkpoint ขยับ, ข้อมูลข้ามบัญชี, ต้องเดาข้อมูล payment/shipping, หรือกู้คืน DB ไม่ได้
 - เก็บรายงานใน [Issue #1](https://github.com/herogamee/PAN/issues/1) เป็น sanitized summaries พร้อม Case IDs; update [Acceptance Matrix](ACCEPTANCE-MATRIX.md)
 - ห้ามอัปโหลด credentials, raw order data, Shopee buyer info หรือ production dumps ลง Public GitHub
+
+## 7. PHP synthetic integration and login lockout regressions (added in v2.5.2)
+
+In a **checkout/test copy** (never live PAN storage), with PHP 8.1+ and pdo_sqlite enabled:
+
+```powershell
+# Windows XAMPP3 PowerShell — tests use disposable temp SQLite, never PAN storage/config.php
+$env:PAN_CI_TEST = '1'
+& 'C:\xampp3\php\php.exe' .\tests\login-throttle.php
+& 'C:\xampp3\php\php.exe' .\tests\db-integration.php sqlite
+Remove-Item Env:PAN_CI_TEST
+```
+
+GitHub Actions also runs MySQL tests against its **dedicated disposable MariaDB service** database `pan_ci_test`. Local MySQL integration refuses any other database name or remote host; never point synthetic tests to your PAN production DB.
+
+Login v2.5.2 requires the login page's new CSRF hidden field; refresh old login tabs. Rate-limit counter files are stored inside `storage/auth-throttle/`; this directory must be writable by PHP, denied from HTTP access, and ignored by Git. Locked login responds HTTP 429 and Retry-After. When behind reverse proxies, validate shared-client-IP behavior before public promotion; forwarded headers are intentionally not trusted blindly.

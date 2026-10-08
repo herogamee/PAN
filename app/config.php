@@ -8,7 +8,7 @@ define('HUB_PRODUCT_NAME', 'PAN');
 define('HUB_CHARACTER_NAME', 'น้องแพน');
 define('HUB_PRODUCT_ROLE', 'Marketplace & Commerce Assistant');
 define('HUB_BRAND_OWNER', 'itoom.work');
-define('HUB_VERSION', '2.5.1');
+define('HUB_VERSION', '2.5.2');
 define('HUB_SQLITE_FILENAME', 'pan.sqlite');
 define('HUB_LEGACY_SQLITE_FILENAME', 'itoom_commerce_hub.sqlite');
 define('HUB_OLDER_LEGACY_SQLITE_FILENAME', 'purchase_hub.sqlite');

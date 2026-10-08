@@ -1,4 +1,4 @@
-# PAN 2.5.1 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.2 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -14,7 +14,7 @@
 
 **เริ่มติดตามงาน 7 เฟสใน GitHub อย่างเป็นทางการ:** [ROADMAP.md](ROADMAP.md) · [Issues #1–#7](https://github.com/herogamee/PAN/issues) · [Acceptance/Test Matrix](docs/ACCEPTANCE-MATRIX.md) · [Staging Runbook](docs/STAGING-ACCEPTANCE.md).
 
-PAN v2.5.1 + Connector v2.4.9 มี source และ automated CI ผ่านแล้ว แต่ **ยังไม่ผ่าน Production Acceptance** จนกว่าจะตรวจ Shopee real-session, Payment/Shipping/Repair, database transactions และ restore ตาม [Phase 1](https://github.com/herogamee/PAN/issues/1). **ห้ามตีความว่า CI pass = live pass.**
+PAN v2.5.2 + Connector v2.4.9 มี source และ automated CI ผ่านแล้ว แต่ **ยังไม่ผ่าน Production Acceptance** จนกว่าจะตรวจ Shopee real-session, Payment/Shipping/Repair, database transactions และ restore ตาม [Phase 1](https://github.com/herogamee/PAN/issues/1). **ห้ามตีความว่า CI pass = live pass.**
 
 Shopee เป็นเพียง Connector ตัวแรกของ PAN ไม่ใช่ชื่อของระบบหลัก เพื่อให้ในอนาคตเพิ่ม Lazada, TikTok Shop, LINE Shopping หรือ Marketplace อื่นได้โดยไม่ต้องเปลี่ยนชื่อโปรเจกต์อีก
 
@@ -53,6 +53,17 @@ PAN 2.5.0 ปรับแกนข้อมูลก่อนเพิ่ม Mar
 4. **Product/Category Enrichment** — งานแยกจาก Order Sync เพื่อให้ endpoint สินค้าเปลี่ยนแล้วไม่ทำให้ Order Sync พัง
 
 ดูรายละเอียดใน `RELEASE-NOTES-v2.5.0.md` และขั้นตอน upgrade ใน `UPGRADE-2.4.1-TO-2.5.0.md`
+
+## PAN Core v2.5.2 — Account Isolation & Login Security
+
+ใน v2.5.2 API Import ตรวจข้อมูลทั้ง Batch ก่อนเขียนฐานข้อมูล และหยุดเมื่อพบรายการที่ไม่สมบูรณ์/คนละบัญชี Shopee; หน้า Admin Login เพิ่ม persistent Rate Limiting และ CSRF. Connector ยังคงเป็น **v2.4.9** ไม่เปลี่ยนตัวดึงข้อมูล Shopee
+
+- [Release Notes v2.5.2](RELEASE-NOTES-v2.5.2.md)
+- [Engineering Handoff v2.5.2](docs/PAN-v2.5.2-HANDOFF.md)
+- [PHP SQLite/MariaDB CI tests](tests/db-integration.php)
+- [Login Throttle Tests](tests/login-throttle.php)
+
+**สถานะ:** Code/CI release candidate; Shopee real-session + historical production DB acceptance ยังอยู่ใน [Phase 1](https://github.com/herogamee/PAN/issues/1). การทดสอบ synthetic ใน CI ไม่ใช่การผ่าน production acceptance
 
 ## เลือก SQLite หรือ MySQL/MariaDB
 

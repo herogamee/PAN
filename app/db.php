@@ -268,11 +268,59 @@ function pan_account_verified_purchase_count(PDO $db,string $accountId): int {
     $st=$db->prepare("SELECT COUNT(*) FROM orders WHERE source_account_id=:aid AND validation_state IN ('verified_v045','verified_v049','verified_v049_date_unknown','verified_v200') AND purchase_state='purchase' AND COALESCE(list_type,0)<>4");$st->execute([':aid'=>$accountId]);return (int)$st->fetchColumn();
 }
 
+/**
+ * Fail the entire incoming Shopee page before any upsert. A browser normalizer
+ * is not a database trust boundary: the public API also needs this check.
+ */
+function pan_validate_import_batch(PDO $db, array $items): string {
+    $batchAccount = '';
+    $byOrder = [];
+    foreach ($items as $r) {
+        if (!is_array($r)) throw new RuntimeException('Invalid Shopee batch record');
+        $name = trim((string)($r['product_name'] ?? ''));
+        $key = trim((string)($r['product_key'] ?? ''));
+        $orderNo = trim((string)($r['order_no'] ?? ''));
+        $account = trim((string)($r['source_account_id'] ?? ''));
+        $date = (string)($r['order_date'] ?? '');
+        $dateSource = trim((string)($r['date_source'] ?? ''));
+        $type = array_key_exists('list_type', $r) ? (int)$r['list_type'] : 0;
+        if ($name === '' || $key === '' || $orderNo === '' || strlen($orderNo) > 100 ||
+            $account === '' || strlen($account) > 100 ||
+            ($date !== '' && !preg_match('/^20\d{2}-\d{2}-\d{2}$/', $date)) ||
+            ($date === '' && $dateSource !== 'unknown') ||
+            !in_array($type, [3,7,8,9,12], true) ||
+            (isset($r['platform']) && (string)$r['platform'] !== 'shopee_th')) {
+            throw new RuntimeException('Incomplete or unsupported Shopee batch record; no records imported');
+        }
+        if ($batchAccount !== '' && $account !== $batchAccount) {
+            throw new RuntimeException('Mixed Shopee accounts in import batch; no records imported');
+        }
+        $batchAccount = $account;
+        $byOrder[$orderNo] = $account;
+    }
+    // The current schema globally identifies Shopee orders by order_no.
+    // Reject attempts to reassign an existing order from another account.
+    // FOR UPDATE serializes writes on existing rows on MySQL/InnoDB.
+    foreach (array_chunk(array_keys($byOrder), 400) as $nos) {
+        $ph = implode(',', array_fill(0, count($nos), '?'));
+        $lock = db_driver($db) === 'mysql' ? ' FOR UPDATE' : '';
+        $stmt = $db->prepare("SELECT order_no,source_account_id FROM orders WHERE order_no IN ($ph)$lock");
+        $stmt->execute($nos);
+        while ($existing = $stmt->fetch()) {
+            $stored = trim((string)($existing['source_account_id'] ?? ''));
+            if ($stored !== '' && $stored !== $byOrder[(string)$existing['order_no']]) {
+                throw new RuntimeException('Shopee account mismatch for existing order; no records imported');
+            }
+        }
+    }
+    return $batchAccount;
+}
+
 function import_collector_payload(PDO $db,array $payload):array {
     ensure_schema_v200($db);$items=$payload['items']??null;if(!is_array($items)||!$items)throw new RuntimeException('ไม่พบรายการจาก Collector');if(count($items)>2000)throw new RuntimeException('หนึ่งครั้งนำเข้าได้สูงสุด 2,000 รายการ');
     $source=substr((string)($payload['source']??'collector'),0,60);$sourceUrl=substr((string)($payload['source_url']??''),0,1000);$jobType=substr((string)($payload['job_type']??'sync'),0,30);$scanId=substr((string)($payload['scan_id']??''),0,80);
     $orders=[];$existingOrders=[];$previous=[];$orderItemKeys=[];$itemCount=0;$reviewCount=0;$batchAccountId='';$batchUsername='';$db->beginTransaction();
-    try{foreach($items as $r){if(!is_array($r))continue;$name=trim((string)($r['product_name']??''));if($name==='')continue;$key=trim((string)($r['product_key']??''));if($key==='')continue;
+    try{pan_validate_import_batch($db,$items);foreach($items as $r){if(!is_array($r))continue;$name=trim((string)($r['product_name']??''));if($name==='')continue;$key=trim((string)($r['product_key']??''));if($key==='')continue;
       $orderNo=trim((string)($r['order_no']??''));if($orderNo==='')continue;
       $date=(string)($r['order_date']??'');$dateSource=trim((string)($r['date_source']??''));if($date!==''&&!preg_match('/^20\\d{2}-\\d{2}-\\d{2}$/',$date))continue;if($date===''&&$dateSource!=='unknown')continue;
       $accountId=trim((string)($r['source_account_id']??''));if($accountId==='')continue;$username=trim((string)($r['source_account_username']??''));$batchAccountId=$accountId;$batchUsername=$username;

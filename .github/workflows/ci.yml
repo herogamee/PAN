@@ -15,6 +15,53 @@ jobs:
       - name: PHP syntax
         run: |
           find . -path './connectors/shopee-server/node_modules' -prune -o -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+  login-security-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - name: Persistent login throttle, lockout and fail-closed regression
+        run: php tests/login-throttle.php
+
+  database-integration:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: pan_ci_root_only
+          MARIADB_DATABASE: pan_ci_test
+          MARIADB_USER: pan_ci
+          MARIADB_PASSWORD: pan_ci_only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, pdo_mysql
+      - name: PDO SQLite integration — synthetic orders, mixed accounts and rollback
+        env:
+          PAN_CI_TEST: '1'
+        run: php tests/db-integration.php sqlite
+      - name: PDO MySQL integration and SQLite-to-MySQL migration — disposable DB only
+        env:
+          PAN_CI_TEST: '1'
+          PAN_TEST_MYSQL_DB: pan_ci_test
+          PAN_TEST_MYSQL_HOST: '127.0.0.1'
+          PAN_TEST_MYSQL_PORT: '3306'
+          PAN_TEST_MYSQL_USER: pan_ci
+          PAN_TEST_MYSQL_PASS: pan_ci_only
+        run: php tests/db-integration.php mysql
+
   extension-regression:
     runs-on: ubuntu-latest
     steps:

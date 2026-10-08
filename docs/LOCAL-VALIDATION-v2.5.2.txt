@@ -1,0 +1,8 @@
+PAN v2.5.2 + Shopee Connector v2.4.9 — local validation (2026-10-08)
+- PHP lint: RUN/SEE CI on exact commit
+- Login-throttle tests: RUN/SEE CI
+- Extension Node regression: RUN/SEE CI
+- PDO SQLite+MariaDB tests: locally blocked when PHP pdo_sqlite/pdo_mysql unavailable; mandatory in CI
+- Server Connector regression: RUN/SEE CI
+- Live Shopee session/API: NOT RUN (requires authorized browser account)
+- Production acceptance: NOT GRANTED

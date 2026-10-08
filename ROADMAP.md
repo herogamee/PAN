@@ -1,6 +1,6 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-08 (Asia/Bangkok) · **PAN Core v2.5.1 + Shopee Connector v2.4.9** · Current `main`: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-08 (Asia/Bangkok) · **PAN Core v2.5.2 + Shopee Connector v2.4.9** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
 
@@ -22,7 +22,7 @@
 | [4 — #4](https://github.com/herogamee/PAN/issues/4) | Shopee Server Connector | P1 | **Experimental** | ผ่าน Windows/Ubuntu + persistent session + error isolation |
 | [5 — #5](https://github.com/herogamee/PAN/issues/5) | Multi-Marketplace Core | P1 | **ยังไม่เริ่ม Migration หลัก** | Composite identity, SQLite/MySQL migration/rollback |
 | [6 — #6](https://github.com/herogamee/PAN/issues/6) | Additional Marketplace Connectors | P2 | **ยังไม่เริ่ม Adapter** | API/access feasibility + pilot หลัง Phase 5 |
-| [7 — #7](https://github.com/herogamee/PAN/issues/7) | Security / Monitoring / Backup | **P0** | **ทำบางส่วน** | Rate limit, redaction, monitoring, restore rehearsal |
+| [7 — #7](https://github.com/herogamee/PAN/issues/7) | Security / Monitoring / Backup | **P0** | **ทำบางส่วน** | Login throttle implemented; proxy trust, redaction, monitoring, restore rehearsal pending |
 
 คำว่า **ทำบางส่วน** หมายถึงมี code หรือพื้นฐานใน repository; ไม่ใช่ production accepted. ทุก Issue มีรายการงานย่อยและข้อกำหนดการทดสอบที่ใช้พิจารณาปิดงาน
 

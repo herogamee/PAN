@@ -1,6 +1,6 @@
 # PAN — Acceptance & Test Matrix
 
-> อัปเดต 2026-10-08 · baseline: **PAN 2.5.1 / Shopee Connector 2.4.9** · [Roadmap](../ROADMAP.md).
+> อัปเดต 2026-10-08 · baseline: **PAN 2.5.2 / Shopee Connector 2.4.9** · [Roadmap](../ROADMAP.md).
 >
 > **อย่าสับสน**: automated CI ผ่าน หมายถึง source/tests ที่รันได้ผ่านเท่านั้น **ไม่ได้** หมายถึงผ่าน Shopee live API, browser login, ข้อมูลร้านจริง หรือ production DB.
 
@@ -11,6 +11,8 @@
 | AUTO-01 | PHP syntax — project files | **PASS (CI)** | [Successful GitHub Actions run](https://github.com/herogamee/PAN/actions/runs/37746656907) |
 | AUTO-02 | Shopee Extension regression | **PASS (CI)** | [Same CI run](https://github.com/herogamee/PAN/actions/runs/37746656907) |
 | AUTO-03 | Server Connector regression + installed Playwright Chromium fixture | **PASS (CI)** | [Same CI run](https://github.com/herogamee/PAN/actions/runs/37746656907) |
+| AUTO-06 | Login throttle / CSRF security tests | **PENDING v2.5.2 CI** | [Source tests](../tests/login-throttle.php) |
+| AUTO-07 | PDO SQLite + disposable MariaDB integration / rollback / migration | **PENDING v2.5.2 CI** | [Source tests](../tests/db-integration.php) |
 | AUTO-04 | Local PHP PDO SQLite/MySQL integration on production-like database | **NOT VERIFIED** | [Local build limitations](LOCAL-VALIDATION-v2.5.1.txt) |
 | AUTO-05 | Live Shopee buyer API / payment/logistics/category via a real user session | **NOT VERIFIED** | [Handoff limitations](PAN-v2.5.1-HANDOFF.md) |
 
