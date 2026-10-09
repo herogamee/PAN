@@ -21,6 +21,8 @@ jobs:
           php tests/order-ui.php
       - name: Legacy payment-method raw-value regression
         run: php tests/payment-method.php
+      - name: Carrier-name removal and Repair queue policy regression
+        run: php tests/carrier-repair.php
   login-security-regression:
     runs-on: ubuntu-latest
     steps:

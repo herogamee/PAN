@@ -1,0 +1,24 @@
+PAN v2.5.5 Complete — Shopee Connector 2.4.12
+
+1) BACK UP your running PAN files, storage/config.php, SQLite/MySQL data and any
+   browser profile/config before installing. Test restore from a private staging copy.
+2) NEVER delete or overwrite live storage/ data, credentials, cookies or API keys.
+   Source ZIP intentionally excludes storage/config.php and live databases.
+3) Windows XAMPP3 suggested path: C:\xampp3\htdocs\pan\
+4) For an exact existing PAN v2.5.4 source, use the v2.5.4 -> v2.5.5 Patch ZIP.
+   Do not apply the patch to another version or guess at a mixed overlay state.
+5) Reload Chrome unpacked Shopee Connector at connectors/shopee-extension/
+   (manifest 2.4.12). PAN Core VERSION should say 2.5.5.
+6) Run PHP lint and Shopee Extension tests; acceptance on production-like
+   database and permitted Shopee account remains a separate requirement.
+7) Orders table no longer displays carrier names and filter by carrier; Analytics
+   carrier charts/breakdowns are removed, other statistics remain.
+8) Existing raw shipping_carrier, tracking_number and courier-delivered dates are
+   preserved. Absence of carrier NAME is not counted as missing detail.
+9) If the source does not report courier-delivered time, PAN must not invent one.
+10) API access to shipping carrier by logged-in Buyer Web API is NOT guaranteed.
+    Seller Open Platform carrier fields do not prove Buyer API availability.
+
+Rollback: restore the exact previous source and user DB/config backup together;
+no database schema migration is required for v2.5.5. Do not roll back only
+some files while leaving an incompatible Connector or PHP backend.

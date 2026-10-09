@@ -364,7 +364,7 @@ function enrich_order_payload(PDO $db,array $r):array {
       throw new RuntimeException('Shopee account mismatch for Order '.$orderNo);
     if((int)($r['list_type']??0)===4){$db->prepare('DELETE FROM orders WHERE id=?')->execute([(int)$row['id']]);return ['deleted_cancelled'=>1];}
     $sets=[];$params=[':id'=>(int)$row['id']];
-    foreach(['source_account_id','source_account_username','order_created_at','paid_at','delivered_at','completed_at','delivery_date_source','payment_method','shipping_carrier','tracking_number','date_source','identity_source','detail_error','detail_missing_fields'] as $f){if(array_key_exists($f,$r)){$sets[]="$f=:$f";$params[":$f"]=(string)$r[$f];}}
+    foreach(['source_account_id','source_account_username','order_created_at','paid_at','delivered_at','completed_at','delivery_date_source','payment_method','shipping_carrier','tracking_number','date_source','identity_source','detail_error','detail_missing_fields'] as $f){if(array_key_exists($f,$r)){if($f==='shipping_carrier'&&trim((string)$r[$f])==='')continue;$sets[]="$f=:$f";$params[":$f"]=(string)$r[$f];}}
     foreach(['shipping_fee','voucher_discount','coins_discount','platform_discount','seller_discount','shop_voucher_discount','shipping_discount'] as $f){if(array_key_exists($f,$r)){$sets[]="$f=:$f";$params[":$f"]=(float)$r[$f];}}
     foreach(['parcel_count','detail_enriched'] as $f){if(array_key_exists($f,$r)){$sets[]="$f=:$f";$params[":$f"]=(int)$r[$f];}}
     if(array_key_exists('metadata_json',$r)){$sets[]='metadata_json=:metadata_json';$params[':metadata_json']=substr((string)$r['metadata_json'],0,60000);}
@@ -374,7 +374,6 @@ function enrich_order_payload(PDO $db,array $r):array {
     // Payment names and Order Complete do not prove the parcel was delivered.
     // Completed orders need courier-delivery evidence; in-transit orders do not.
     $missing=[];
-    if(trim((string)($r['shipping_carrier']??''))==='')$missing[]='shipping_carrier';
     $listType=(int)($r['list_type']??$row['list_type']??0);
     if($listType===3 && (pan_date_text((string)($r['delivered_at']??''))==='' || !pan_delivery_source_confirmed((string)($r['delivery_date_source']??''))))$missing[]='delivered_at';
     $detailError=trim((string)($r['detail_error']??''));$state=$detailError!==''?'error':($missing?'partial':'complete');
@@ -384,16 +383,36 @@ function enrich_order_payload(PDO $db,array $r):array {
     $aid=trim((string)($r['source_account_id']??$row['source_account_id']??''));if($aid!=='')upsert_account_seen($db,$aid,(string)($r['source_account_username']??''),'','','repair');
     return ['updated'=>1,'detail_state'=>$state,'missing_fields'=>$missing];
 }
+/** Old carrier-only (or payment-only) missing-detail flags are obsolete, not a reason to refetch.
+ * Keep historical values in storage; do not destructively rewrite user orders.
+ */
+function pan_optional_only_missing_fields(string $value): bool {
+    $parts=array_values(array_filter(array_map('trim',explode(',',strtolower($value)))));
+    if(!$parts)return false;
+    foreach($parts as $f)if(!in_array($f,['shipping_carrier','payment_method'],true))return false;
+    return true;
+}
+function pan_optional_only_missing_sql(string $alias=''):string {
+    $p=$alias!==''?$alias.'.':'';
+    $missing="LOWER(REPLACE(TRIM(COALESCE({$p}detail_missing_fields,'')),' ',''))";
+    return "$missing IN ('shipping_carrier','payment_method','payment_method,shipping_carrier','shipping_carrier,payment_method')";
+}
+/** Shared between Repair queue and status counts so obsolete carrier flags never inflate backlog. */
+function pan_repair_required_sql(string $alias=''):string {
+    $p=$alias!==''?$alias.'.':'';
+    $source="LOWER(TRIM(COALESCE({$p}delivery_date_source,'')))";
+    $trusted="($source LIKE '%.delivered_time' OR $source LIKE '%.actual_delivery_time' OR $source LIKE '%.delivery_completed_time' OR $source LIKE '%.courier_delivered_at' OR $source LIKE '%.carrier_delivered_at' OR $source LIKE '%.parcel_delivered_at')";
+    $suspect="({$p}list_type=3 AND (TRIM(COALESCE({$p}delivered_at,''))='' OR NOT $trusted OR $source LIKE '%estimate%' OR $source LIKE '%expected%' OR $source LIKE '%predicted%' OR $source LIKE '%pickup%' OR $source LIKE '%dispatch%' OR $source LIKE '%warehouse%'))";
+    $optional=pan_optional_only_missing_sql($alias);
+    return "(COALESCE({$p}detail_enriched,0)=0 OR COALESCE({$p}detail_state,'pending') IN ('pending','error') OR (COALESCE({$p}detail_state,'pending')='partial' AND NOT ($optional)) OR $suspect)";
+}
 function repair_queue(PDO $db,string $accountId,int $limit=5000,bool $includeLegacy=true,bool $all=false,int $offset=0):array {
     ensure_schema_v200($db);$accountId=trim($accountId);if($accountId==='')throw new RuntimeException('account_id required');$limit=max(1,min(1000,$limit));$offset=max(0,$offset);
     $where='COALESCE(list_type,0)<>4 AND (source_account_id=:aid';$params=[':aid'=>$accountId];
     if($includeLegacy)$where.=' OR COALESCE(source_account_id,"")=""';$where.=')';
     // Historical 'complete' detail rows may have only an ambiguous delivery date
     // or Shopee's order-completion timestamp. Offer a manual recheck, never auto-advance.
-    $deliverySource="LOWER(TRIM(COALESCE(delivery_date_source,'')))";
-    $trustedDelivery="($deliverySource LIKE '%.delivered_time' OR $deliverySource LIKE '%.actual_delivery_time' OR $deliverySource LIKE '%.delivery_completed_time' OR $deliverySource LIKE '%.courier_delivered_at' OR $deliverySource LIKE '%.carrier_delivered_at' OR $deliverySource LIKE '%.parcel_delivered_at')";
-    $suspect="(list_type=3 AND (TRIM(COALESCE(delivered_at,''))='' OR NOT $trustedDelivery OR $deliverySource LIKE '%estimate%' OR $deliverySource LIKE '%expected%' OR $deliverySource LIKE '%predicted%' OR $deliverySource LIKE '%pickup%' OR $deliverySource LIKE '%dispatch%' OR $deliverySource LIKE '%warehouse%'))";
-    if(!$all)$where.=" AND (COALESCE(detail_enriched,0)=0 OR COALESCE(detail_state,'pending') IN ('pending','error','partial') OR $suspect)";
+    if(!$all)$where.=' AND '.pan_repair_required_sql();
     $count=$db->prepare("SELECT COUNT(*) FROM orders WHERE $where");$count->execute($params);$total=(int)$count->fetchColumn();
     $st=$db->prepare("SELECT order_no,list_type,source_account_id,source_account_username,detail_enriched,detail_state,detail_error FROM orders WHERE $where ORDER BY CASE WHEN COALESCE(detail_enriched,0)=0 THEN 0 WHEN detail_state='error' THEN 1 ELSE 2 END,id DESC LIMIT $limit OFFSET $offset");$st->execute($params);
     return ['rows'=>$st->fetchAll(),'total'=>$total,'offset'=>$offset,'limit'=>$limit,'has_more'=>$offset+$limit<$total];

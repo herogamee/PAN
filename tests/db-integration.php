@@ -139,6 +139,26 @@ try {
         'delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
     test_check($numeric['detail_state']==='complete' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
         'unused numeric payment code no longer forces endless Repair');
+    // A missing buyer carrier must never keep a successfully delivered order in Repair forever.
+    $noCarrier=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'shipping_carrier'=>'','completed_at'=>'2026-10-03 10:00:00',
+        'delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
+    test_check($noCarrier['detail_state']==='complete' && !in_array('shipping_carrier',$noCarrier['missing_fields'],true),
+        'missing carrier alone does not reduce Detail completeness');
+    test_check(row_for($db,'CI-A1')['shipping_carrier']==='Synthetic Carrier',
+        'missing carrier response preserves previously stored raw carrier value');
+    $db->exec("UPDATE orders SET detail_state='partial',detail_missing_fields='shipping_carrier' WHERE order_no='CI-A1'");
+    test_check(repair_queue($db,'CI-A',10,false,false,0)['total']===0,
+        'legacy carrier-only partial row cannot cause endless automatic/manual queue retries');
+    test_check((int)$db->query("SELECT COUNT(*) FROM orders WHERE source_account_id='CI-A' AND ".pan_repair_required_sql())->fetchColumn()===0,
+        'API status backlog and Repair queue share the same obsolete-carrier filter');
+    test_check(pan_optional_only_missing_fields('shipping_carrier,payment_method') && !pan_optional_only_missing_fields('shipping_carrier,delivered_at'),
+        'optional-only historic flags are recognized without ignoring missing delivery proof');
+    // New enrichment replaces the stale partial-only metadata when verified delivery exists.
+    $repaired=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'shipping_carrier'=>'','delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
+    test_check($repaired['detail_state']==='complete' && row_for($db,'CI-A1')['detail_missing_fields']==='',
+        'repair migrates stale carrier-only coverage without touching historical order data');
     $placedSql=pan_order_placed_sql();
     $db->exec("UPDATE orders SET order_created_at='',order_date='2026-10-04',date_source='shipping.tracking_info.ctime' WHERE order_no='CI-A1'");
     $when=$db->query("SELECT $placedSql placed FROM orders WHERE order_no='CI-A1'")->fetchColumn();

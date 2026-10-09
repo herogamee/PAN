@@ -1,5 +1,5 @@
 const DEFAULT_HUB='https://pan.itoom.work';
-const VERSION='2.4.11';
+const VERSION='2.4.12';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const txt=v=>v==null?'':String(v);
 const num=v=>{const n=Number(v);if(!Number.isFinite(n))return 0;return Math.abs(n)>=100000?n/100000:n};
@@ -153,7 +153,8 @@ function detailMeta(json){
   const tracking=deepTextWhere(d,['tracking_number','tracking_no','tracking_number_list','tracking_code','tracking_id'],p=>/(tracking|shipping|shipment|parcel|logistic)/i.test(p));
   const parcelCount=Number(d?.shipping?.num_parcels??d?.num_parcels??d?.parcel_count??(Array.isArray(d?.package_list)?d.package_list.length:(Array.isArray(d?.packages)?d.packages.length:0)))||0;
   const meta={order_created_at:created?.datetime||created?.date||'',paid_at:formatBangkok(paid?.epoch),delivered_at:delivered?.datetime||delivered?.date||'',completed_at:formatBangkok(completed?.epoch),delivery_date_source:delivered?`detail.${deliveredFound.path}`:'',payment_method:cleanText(payment?.value),shipping_carrier:cleanText(carrier?.value),tracking_number:cleanText(tracking?.value),parcel_count:parcelCount,shipping_fee:deepMoney(d,['actual_shipping_fee','buyer_shipping_fee'])??0,voucher_discount:deepMoney(d,['voucher_discount','voucher_discount_amount'])??0,coins_discount:deepMoney(d,['coins_discount','coin_discount'])??0,platform_discount:deepMoney(d,['platform_discount'])??0,detail_enriched:1,detail_error:''};
-  const missing=[];if(!meta.shipping_carrier)missing.push('shipping_carrier');if(Number(d?.list_type||d?.info_card?.list_type||0)===3&&!meta.delivered_at)missing.push('delivered_at');meta.detail_missing_fields=missing.join(',');
+  // Buyer carrier name is not contract-backed. Keep any raw carrier, but never require it for Detail coverage.
+  const missing=[];if(Number(d?.list_type||d?.info_card?.list_type||0)===3&&!meta.delivered_at)missing.push('delivered_at');meta.detail_missing_fields=missing.join(',');
   meta.metadata_json=JSON.stringify({sources:{created:created?.path||'',paid:paid?.path||'',delivered:deliveredFound?.path||'',completed:completed?.path||'',payment:payment?.path||'',carrier:carrier?.path||'',tracking:tracking?.path||''},codes:{payment_method:payment?.rawCode||''},values:{order_created_at:meta.order_created_at,paid_at:meta.paid_at,delivered_at:meta.delivered_at,completed_at:meta.completed_at,payment_method:meta.payment_method,shipping_carrier:meta.shipping_carrier,tracking_number:meta.tracking_number,parcel_count:meta.parcel_count},missing});
   return meta;
 }
@@ -191,7 +192,7 @@ async function processSyncRecords(raw,account,hub,scanId,pageUrl,seenOrderNos=[]
     else{ignored++;const reason=n.ignoredReason||'unknown';reasonCounts[reason]=(reasonCounts[reason]||0)+1;}
   }
   const structural=['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].reduce((s,k)=>s+(reasonCounts[k]||0),0);
-  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรงกับ Normalizer 2.4.11 · หยุดก่อนเลื่อน checkpoint · structural=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · sample=${JSON.stringify(raw.find(x=>{const n=normalizeOrder(x,account);return ['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].includes(n.ignoredReason)})||raw[0]).slice(0,6000)}`);
+  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรงกับ Normalizer 2.4.12 · หยุดก่อนเลื่อน checkpoint · structural=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · sample=${JSON.stringify(raw.find(x=>{const n=normalizeOrder(x,account);return ['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].includes(n.ignoredReason)})||raw[0]).slice(0,6000)}`);
   let cancelledResult={deleted:0},importResult={};
   if(cancelledNos.length)cancelledResult=await postCancelled(hub,String(account.userid),cancelledNos)||{deleted:0};
   if(batch.length)importResult=await postBatch(hub,batch,{url:pageUrl,scanId,jobType:options.jobType||'sync'})||{};

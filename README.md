@@ -1,4 +1,4 @@
-# PAN 2.5.4 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.5 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -12,19 +12,7 @@
 
 ## Roadmap และงานที่ค้าง
 
-**เริ่มติดตามงาน 7 เฟสใน GitHub อย่างเป็นทางการ:** [ROADMAP.md](ROADMAP.md) · [Issues #1–#7](https://github.com/herogamee/PAN/issues) · [Acceptance/Test Matrix](docs/ACCEPTANCE-MATRIX.md) · [Staging Runbook](docs/STAGING-ACCEPTANCE.md).
-
-PAN v2.5.3 + Connector v2.4.10 มี source และ automated CI ผ่านแล้ว แต่ **ยังไม่ผ่าน Production Acceptance** จนกว่าจะตรวจ Shopee real-session, Payment/Shipping/Repair, database transactions และ restore ตาม [Phase 1](https://github.com/herogamee/PAN/issues/1). **ห้ามตีความว่า CI pass = live pass.**
-
-## PAN Core 2.5.4 — วันที่สั่งซื้อ / วันที่ได้รับพัสดุ
-
-- ถอด **ช่องทางการชำระเงิน** ออกจากหน้าคำสั่งซื้อ ตัวกรอง และกราฟ Analytics แต่เก็บค่าดิบในฐานเดิมโดยไม่ลบข้อมูล
-- **วันที่สั่งซื้อ** = วัน/เวลาสร้างออเดอร์ที่ตรวจพบจาก Shopee โดยตรง; หากมีเฉพาะวันที่ จะระบุว่าไม่พบเวลา ไม่ใช้เวลาชำระเงิน/ขนส่ง/Complete แทน
-- **วันที่ได้รับพัสดุ** = วัน/เวลาที่ขนส่งนำส่งถึงผู้รับตามเหตุการณ์ delivery ที่ชัดเจน; **ไม่ใช้ Shopee Order Complete** หรือเวลาร้านเริ่มส่งเป็น fallback
-- ยกเลิก fallback ข้ามความหมายในตัวกรอง/เรียงวันที่, Dashboard/Analytics และจุดอ้างอิง Recent Sync
-- [Release Notes v2.5.4](RELEASE-NOTES-v2.5.4.md) · [Date Acceptance](docs/PAN-v2.5.4-DATE-ACCEPTANCE.md) · [Phase 2](https://github.com/herogamee/PAN/issues/2)
-
-**ยังไม่ใช่ Live Acceptance:** Shopee buyer private API อาจไม่ส่งเวลาขนส่งนำส่งจริงสำหรับทุกคำสั่งซื้อ หากไม่มีหลักฐานต้องแสดงว่าไม่ทราบ
+แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.5 + Shopee Connector v2.4.12 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
 
 Shopee เป็นเพียง Connector ตัวแรกของ PAN ไม่ใช่ชื่อของระบบหลัก เพื่อให้ในอนาคตเพิ่ม Lazada, TikTok Shop, LINE Shopping หรือ Marketplace อื่นได้โดยไม่ต้องเปลี่ยนชื่อโปรเจกต์อีก
 
@@ -64,27 +52,43 @@ PAN 2.5.0 ปรับแกนข้อมูลก่อนเพิ่ม Mar
 
 ดูรายละเอียดใน `RELEASE-NOTES-v2.5.0.md` และขั้นตอน upgrade ใน `UPGRADE-2.4.1-TO-2.5.0.md`
 
-## PAN Core v2.5.2 — Account Isolation & Login Security
+## PAN 2.5.2 — API Account Isolation / Login Rate Limiting
 
-ใน v2.5.2 API Import ตรวจข้อมูลทั้ง Batch ก่อนเขียนฐานข้อมูล และหยุดเมื่อพบรายการที่ไม่สมบูรณ์/คนละบัญชี Shopee; หน้า Admin Login เพิ่ม persistent Rate Limiting และ CSRF. Connector ยังคงเป็น **v2.4.9** ไม่เปลี่ยนตัวดึงข้อมูล Shopee
+Core v2.5.2 ยกระดับความปลอดภัยของการนำเข้าแบบ **fail-closed** และ Login: ตรวจทั้ง batch ก่อนเขียนข้อมูล, ไม่ยอมให้ import order ที่เป็นของ Shopee account อื่น, เก็บตัวนับการล็อกอินผิดพลาดแบบ persistent และเพิ่ม Login CSRF. ยังคงใช้ Shopee Connector **2.4.9** เดิม. ดู [Release Notes v2.5.2](RELEASE-NOTES-v2.5.2.md) และ [Engineering Handoff](docs/PAN-v2.5.2-HANDOFF.md).
 
-- [Release Notes v2.5.2](RELEASE-NOTES-v2.5.2.md)
-- [Engineering Handoff v2.5.2](docs/PAN-v2.5.2-HANDOFF.md)
-- [PHP SQLite/MariaDB CI tests](tests/db-integration.php)
-- [Login Throttle Tests](tests/login-throttle.php)
+**ยังไม่ผ่าน production acceptance:** ต้องทดสอบบน Shopee session จริงและข้อมูล SQLite/MySQL staging ตาม [Phase 1](https://github.com/herogamee/PAN/issues/1). ตัวทดสอบ PDO ใน CI ใช้ฐานข้อมูลชั่วคราวแบบ synthetic เท่านั้น.
 
-**สถานะ:** Code/CI release candidate; Shopee real-session + historical production DB acceptance ยังอยู่ใน [Phase 1](https://github.com/herogamee/PAN/issues/1). การทดสอบ synthetic ใน CI ไม่ใช่การผ่าน production acceptance
+## PAN 2.5.3 — ช่องทางการชำระเงิน / Payment Method Clarity
 
-## PAN v2.5.3 — ช่องทางการชำระเงิน
+แก้ปัญหาคอลัมน์ **ชำระเงิน** แสดง `6` / `92` ตรง ๆ จาก Shopee: ชื่อคอลัมน์ใหม่เป็น **ช่องทางการชำระเงิน** และกรณี Shopee ส่งเพียงเลขรหัสจะแสดงว่า **ยังไม่ทราบช่องทาง (รหัส Shopee 6/92)** อย่างชัดเจน ไม่เดาว่าเป็น ShopeePay, SPayLater, COD หรือการจ่ายสำเร็จ
 
-แก้ปัญหาคอลัมน์ **ชำระเงิน** แสดงรหัส Shopee `6` / `92` ตรง ๆ: ปรับชื่อเป็น **ช่องทางการชำระเงิน** และกรณีมีแต่รหัสจะแสดง **ยังไม่ทราบช่องทาง (รหัส Shopee 6/92)** ไม่เดาว่าเป็น ShopeePay, SPayLater, COD หรือสถานะจ่ายสำเร็จ
+- UI: ตาราง Order, filter และ Analytics แสดงชื่อที่ชัดเจนโดย **ไม่แก้ค่า raw ใน DB** และไม่ผูกเลขกับช่องทางที่ไม่มีหลักฐาน
+- Connector v2.4.10: พยายามใช้ชื่อวิธีชำระเงินจาก Detail ก่อนรหัสเลข; เก็บ numeric code ไว้ใน metadata แบบจำกัด; ถ้าได้เพียงรหัสจะถือว่า Detail ยังไม่ครบ
+- แถวเก่าที่มีรหัสเลขและเคยขึ้น Detail ครบจะแสดง **Detail บางส่วน** และเข้าคิวเติมข้อมูลด้วยคำสั่ง **เติมรายละเอียดที่ยังขาด** ได้ (ไม่ได้ยิง API อัตโนมัติทุก Order)
+- ฟิลด์นี้คือช่องทางที่เลือก **ไม่ใช่ยอดจ่าย / สถานะการชำระเงิน** ซึ่งเป็นข้อมูลคนละชนิด
 
-- ตาราง Order, ตัวกรอง และ Analytics แสดงค่าเข้าใจง่ายโดยไม่เปลี่ยนค่า raw ในฐานข้อมูลเดิม
-- Connector v2.4.10 เลือกชื่อช่องทางจาก Order Detail ก่อนรหัสตัวเลข; เก็บรหัสใน metadata เมื่อมีข้อมูล
-- รหัสตัวเลขล้วนคือ Detail ที่ยังไม่สมบูรณ์ รวมถึงข้อมูลเก่าที่ถูกแสดงว่า Complete; เลือกเติมข้อมูลใหม่ได้ด้วยคำสั่ง **เติมรายละเอียดที่ยังขาด** โดยไม่ยิง Shopee API อัตโนมัติ
-- ตัวเลขนี้ไม่ใช่ยอดเงินและไม่ได้แสดงสถานะการชำระเงิน
+อ่าน [Release Notes 2.5.3](RELEASE-NOTES-v2.5.3.md) และตรวจรับ [Phase 2: Payment / Shipping / Repair](https://github.com/herogamee/PAN/issues/2) เมื่อมี Shopee session จริงและข้อมูลที่ปกปิดตัวระบุแล้ว
 
-ดู [Release Notes 2.5.3](RELEASE-NOTES-v2.5.3.md) และ [Phase 2 — Payment/Shipping/Repair](https://github.com/herogamee/PAN/issues/2) ซึ่งยังต้องทดสอบกับบัญชี Shopee จริง
+## PAN 2.5.5 — ซ่อนบริษัทขนส่งที่ Buyer API ยังไม่ได้ตรวจรับ
+
+- ถอดคอลัมน์ **ขนส่ง** และตัวกรอง **บริษัทขนส่ง** ออกจากหน้า Orders รวมถึงกราฟ/ตารางสรุปใน Analytics เพื่อไม่เผยแพร่ข้อมูลที่ไม่มีแหล่งที่มายืนยัน
+- API ที่ PAN ใช้คือ Shopee **Buyer Web API** (`/api/v4/order/get_order_detail`) ซึ่งยังไม่มีสัญญาฟิลด์ชื่อบริษัทขนส่งที่ยืนยันได้; Seller Open Platform API เป็นคนละบริบท/สิทธิ์
+- **เก็บ `shipping_carrier` ดิบเดิมในฐาน** และยังดึงข้อมูล track/delivered เท่าที่มีจริง ไม่ลบออเดอร์และไม่เปลี่ยนหลักการรับพัสดุใน v2.5.4
+- ข้อมูล carrier ที่ไม่ปรากฏ **ไม่ลด Detail coverage** หรือทำให้ออเดอร์ติดคิว Repair ซ้ำ เมื่อหลักฐานวันรับพัสดุครบตามสถานะ; แก้จำนวน pending ให้ตรงกับคิวจริง
+- รายการเก่าที่ `detail_missing_fields` มีเพียง `shipping_carrier`/`payment_method` ถูกละเว้นจากคิว Repair โดยไม่เขียนทับข้อมูลเดิม
+- [Release Notes v2.5.5](RELEASE-NOTES-v2.5.5.md) · [Shipping Acceptance Policy](docs/PAN-v2.5.5-SHIPPING-ACCEPTANCE.md) · [Phase 2](https://github.com/herogamee/PAN/issues/2)
+
+**Live Shopee buyer API ยังไม่ได้ทดสอบกับบัญชีจริง:** คอลัมน์จะกลับมาได้ก็ต่อเมื่อมีหลักฐานจากข้อมูลที่ได้รับอนุญาตและมีความสม่ำเสมอเท่านั้น
+
+## PAN 2.5.4 — วันที่สั่งซื้อ / วันที่ได้รับพัสดุ
+
+- **ถอดช่องทางชำระเงิน** ออกจากตาราง Orders ตัวกรอง และกราฟ Analytics โดยไม่ลบค่าดิบ/ข้อมูลเก่าในฐาน
+- **วันที่สั่งซื้อ** ยึดเวลาสร้าง Order จริงเท่านั้น ถ้ามีเพียงวันที่แสดงว่า Shopee ไม่ระบุเวลา และไม่ใช้วันจ่ายเงิน/ส่งพัสดุ/Complete แทน
+- **วันที่ได้รับพัสดุ** ใช้เฉพาะวันที่ขนส่งยืนยันนำส่งถึงผู้รับ ถ้าไม่มีหลักฐานให้บอกว่าไม่ทราบ **ไม่ใช้ Shopee Order Complete** เป็น fallback
+- กราฟยอดซื้อ ตัวเรียงและตัวกรองวัน และจุดอ้างอิง Recent Sync ใช้วันที่สั่งซื้อที่มี provenance ตามเดียวกัน
+- ดู [Release Notes 2.5.4](RELEASE-NOTES-v2.5.4.md) และ [Date Acceptance Checklist](docs/PAN-v2.5.4-DATE-ACCEPTANCE.md)
+
+**ข้อจำกัด:** การผ่าน unit/CI ไม่ได้ยืนยันว่า Shopee Buyer API ให้ timestamp ส่งถึงผู้รับครบทุก Order ต้องทดสอบเซสชันจริงที่ได้รับอนุญาตและเก็บหลักฐานแบบปกปิดข้อมูลส่วนบุคคลก่อนอนุมัติ Production
 
 ## เลือก SQLite หรือ MySQL/MariaDB
 
@@ -187,7 +191,7 @@ FLUSH PRIVILEGES;
 
 ถ้ามี HTTPS ที่ `commerce.itoom.work` ให้ VirtualHost 443 ของโดเมนเดิม redirect ไป `https://pan.itoom.work/` เช่นกัน และคง certificate ของโดเมนเดิมไว้ตราบใดที่ยังให้บริการ redirect
 
-## Shopee Connector 2.4.9
+## Shopee Connector 2.4.12
 
 เพิ่มปุ่ม **อัปเดตเฉพาะช่วงล่าสุด** เพื่อลดการอ่านประวัติทั้งหมดซ้ำ ใช้วันที่ล่าสุดใน PAN ทับซ้อน 7 วันและครอบคลุมรายการค้าง ดู `connectors/shopee-extension/RECENT-SYNC.md` สำหรับการอัปเดตส่วนเสริมและ API
 
@@ -303,7 +307,7 @@ PAN
 
 ---
 
-Version: **PAN 2.5.4**  
+Version: **PAN 2.5.5**  
 Character: **น้องแพน**  
 Role: **Marketplace & Commerce Assistant**  
 Brand: **itoom.work**

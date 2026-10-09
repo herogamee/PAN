@@ -70,8 +70,6 @@ function analytics_snapshot(PDO $db): array {
     $topProducts=analytics_rows($db,"SELECT i.product_key,MAX(i.product_name) product_name,MAX(i.variant_name) variant_name,MAX(i.image_url) image_url,COUNT(DISTINCT i.order_id) orders,COALESCE(SUM(i.quantity),0) qty,COALESCE(SUM($productSpendExpr),0) spent,COALESCE(AVG(CASE WHEN i.actual_unit_price>0 THEN i.actual_unit_price WHEN i.net_unit_price>0 THEN i.net_unit_price ELSE i.purchase_price END),0) avg_price FROM order_items i JOIN orders o ON o.id=i.order_id WHERE $purchaseO GROUP BY i.product_key ORDER BY spent DESC,qty DESC LIMIT 15");
     foreach($topProducts as &$r){$r['orders']=(int)$r['orders'];$r['qty']=(int)$r['qty'];$r['spent']=(float)$r['spent'];$r['avg_price']=(float)$r['avg_price'];}unset($r);
 
-    $carriers=analytics_rows($db,"SELECT CASE WHEN TRIM(COALESCE(shipping_carrier,''))='' THEN 'ไม่ทราบ' ELSE shipping_carrier END label,COUNT(*) orders,COALESCE(SUM(total_paid),0) spent FROM orders WHERE $purchase GROUP BY label ORDER BY orders DESC,spent DESC LIMIT 12");
-    foreach($carriers as &$r){$r['orders']=(int)$r['orders'];$r['spent']=(float)$r['spent'];}unset($r);
 
     $accounts=analytics_rows($db,"SELECT COALESCE(NULLIF(source_account_username,''),NULLIF(source_account_id,''),'ไม่ทราบ') label,COUNT(*) orders,COUNT(DISTINCT NULLIF(shop_name,'')) shops,COALESCE(SUM(total_paid),0) spent,MAX($dateExpr) last_order FROM orders WHERE $purchase GROUP BY COALESCE(NULLIF(source_account_username,''),NULLIF(source_account_id,''),'ไม่ทราบ') ORDER BY spent DESC");
     foreach($accounts as &$r){$r['orders']=(int)$r['orders'];$r['shops']=(int)$r['shops'];$r['spent']=(float)$r['spent'];}unset($r);
@@ -108,7 +106,6 @@ function analytics_snapshot(PDO $db): array {
       'yearly'=>$years,
       'top_shops'=>$topShops,
       'top_products'=>$topProducts,
-      'carriers'=>$carriers,
       'accounts'=>$accounts,
       'weekdays'=>$weekdays,
       'date_sources'=>$dateSources,

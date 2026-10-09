@@ -299,6 +299,21 @@ test('v2.4.8 detail parser reads nested payment and logistics labels and records
   assert.equal(meta.detail_missing_fields,'');
 });
 
+test('buyer shipping carrier name is optional, but tracking and verified delivery remain intact',async()=>{
+  const f=await fixture();
+  const delivered=Math.floor(Date.parse('2026-10-08T14:00:00+07:00')/1000);
+  const meta=f.ctx.detailMeta({data:{info_card:{list_type:3},shipping:{tracking_info:{tracking_number:'SYNTHETIC-TRACK',delivered_time:delivered}}}});
+  assert.equal(meta.shipping_carrier,'');
+  assert.equal(meta.tracking_number,'SYNTHETIC-TRACK');
+  assert.equal(meta.delivered_at,'2026-10-08 14:00:00');
+  assert.equal(meta.detail_missing_fields,'');
+  assert.equal(JSON.parse(meta.metadata_json).sources.carrier,'');
+  const incomplete=f.ctx.detailMeta({data:{info_card:{list_type:3},shipping:{tracking_info:{tracking_number:'SYNTHETIC-TRACK'}}}});
+  assert.equal(incomplete.detail_missing_fields,'delivered_at');
+  const transit=f.ctx.detailMeta({data:{info_card:{list_type:7},shipping:{tracking_info:{tracking_number:'SYNTHETIC-TRACK'}}}});
+  assert.equal(transit.detail_missing_fields,'');
+});
+
 test('payment detail prioritizes readable label over numeric Shopee codes, and retains raw provenance',async()=>{
   const f=await fixture();
   const meta=f.ctx.detailMeta({data:{payment_info:{payment_method:92,payment_channel:{display_name:'ShopeePay'}},

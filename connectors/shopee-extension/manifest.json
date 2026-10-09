@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PAN — Shopee Connector",
-  "version": "2.4.11",
+  "version": "2.4.12",
   "description": "Shopee Connector: ดึงประวัติซื้อจาก Shopee TH และส่งเข้า PAN / น้องแพน ผ่าน HTTPS + API Key",
   "permissions": [
     "storage",
