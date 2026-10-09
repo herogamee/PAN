@@ -1,8 +1,16 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.5 + Shopee Connector v2.4.12** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.6 + Shopee Connector v2.4.13** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
+
+## PAN v2.5.6 — ถอดวันรับพัสดุที่ Buyer API ยังยืนยันไม่ได้
+
+- **ทำเสร็จใน Source:** ถอดคอลัมน์ `วันที่ได้รับพัสดุ` ออกจาก Orders และตัดสถิติ `delivered_at` / `completed_at` ออกจากแหล่งวันที่ใน Analytics; ยังคง `วันที่สั่งซื้อ` และสถานะคำสั่งซื้อแยกความหมายกัน
+- **Detail/Repair:** ขาดวันที่รับพัสดุไม่ทำให้ Detail กลายเป็น partial, ไม่บังคับ Repair ซ้ำ; legacy `detail_missing_fields=delivered_at` (เดี่ยวหรือรวมกับ payment/carrier) ถูกละเว้นในคิวและ pending counters แต่ข้อผิดพลาดจริงยังเข้าคิว
+- **Raw data:** ไม่ลบ `delivered_at`, `delivery_date_source`, `completed_at` หรือข้อมูลประวัติเดิม และไม่อ้างว่าเป็นเวลาขนส่งถึงผู้รับ
+- **หลักฐาน:** [PAN v2.5.6 source](https://github.com/herogamee/PAN/commit/1f65bb01e73de2a27c5f8d47f9591c65b9ec0097) · [GitHub CI ผ่านทุกงาน](https://github.com/herogamee/PAN/actions/runs/37942186241) · [Release Notes](RELEASE-NOTES-v2.5.6.md) · [Delivery retirement policy](docs/PAN-v2.5.6-DELIVERY-FIELD-RETIREMENT.md)
+- **ยังไม่ใช่ Production Accepted:** การผ่าน CI จาก synthetic fixtures ไม่ใช่หลักฐานว่า Buyer API มี/ไม่มีฟิลด์ทุกกรณี หรือว่าฐานข้อมูลจริงได้ทดสอบ Backup/Restore แล้ว
 
 ## อัปเดตด้านความถูกต้องของ UI — PAN 2.5.5
 
@@ -24,7 +32,7 @@
 | เฟส / Issue | งาน | ความสำคัญ | สถานะ ณ วันที่อัปเดต | เงื่อนไขก่อนปิด |
 |---|---|---|---|---|
 | [1 — #1](https://github.com/herogamee/PAN/issues/1) | Production Acceptance & Data Integrity | **P0** | **Code/CI ผ่าน; Live/Staging ยังไม่ผ่านการตรวจรับ** | Shopee session จริง + SQLite/MySQL + safe recovery |
-| [2 — #2](https://github.com/herogamee/PAN/issues/2) | Payment / Shipping / Repair 3.0 | **P0** | **ทำบางส่วน** | ซ่อนช่องทางชำระเงินและชื่อบริษัทขนส่งที่ Buyer API ไม่ยืนยัน; ตรวจวันรับพัสดุ/Repair จริง |
+| [2 — #2](https://github.com/herogamee/PAN/issues/2) | Order Detail / Repair 3.0 | **P0** | **ทำบางส่วน** | ซ่อนช่องทางชำระเงินและชื่อบริษัทขนส่งที่ Buyer API ไม่ยืนยัน; ถอดวันรับพัสดุที่ไม่มีข้อมูลยืนยัน; ตรวจ Repair/วันที่สั่งซื้อจริง |
 | [3 — #3](https://github.com/herogamee/PAN/issues/3) | Product Explorer / Price Intelligence 3.0 | P1 | **มี Foundation แล้ว** | จับคู่/merge/split ปลอดภัย + filters/sorts ผ่าน |
 | [4 — #4](https://github.com/herogamee/PAN/issues/4) | Shopee Server Connector | P1 | **Experimental** | ผ่าน Windows/Ubuntu + persistent session + error isolation |
 | [5 — #5](https://github.com/herogamee/PAN/issues/5) | Multi-Marketplace Core | P1 | **ยังไม่เริ่ม Migration หลัก** | Composite identity, SQLite/MySQL migration/rollback |

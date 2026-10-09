@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.5 + Shopee Connector v2.4.12**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.6 + Shopee Connector v2.4.13**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.5`, Extension manifest เป็น `2.4.12`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.6`, Extension manifest เป็น `2.4.13`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -103,14 +103,15 @@ GitHub Actions also runs MySQL tests against its **dedicated disposable MariaDB 
 
 Login v2.5.3 requires the login page's new CSRF hidden field; refresh old login tabs. Rate-limit counter files are stored inside `storage/auth-throttle/`; this directory must be writable by PHP, denied from HTTP access, and ignored by Git. Locked login responds HTTP 429 and Retry-After. When behind reverse proxies, validate shared-client-IP behavior before public promotion; forwarded headers are intentionally not trusted blindly.
 
-## 8. การตรวจรับข้อมูลขนส่งและวันที่ได้รับพัสดุ (PAN 2.5.5)
+## 8. การตรวจรับการถอดวันรับพัสดุ (PAN 2.5.6)
 
-- [ ] Orders ต้องไม่มีคอลัมน์ **ขนส่ง**, ตัวกรองบริษัทขนส่ง และสรุป/กราฟบริษัทขนส่งใน Analytics; ช่องทางชำระเงินยังคงไม่แสดง
-- [ ] วันที่สั่งซื้อยังมาจากเวลาสร้างคำสั่งซื้อจริง (date-only ต้องไม่เพิ่มเวลา 00:00 ขึ้นมาเอง)
-- [ ] วันที่ได้รับพัสดุยังใช้เฉพาะหลักฐานนำส่งถึงผู้รับ ไม่ใช่วันที่ร้านส่งหรือวันที่ Order Complete
-- [ ] หาก Buyer API ตอบแต่เลขติดตามและวันนำส่ง โดยไม่มีชื่อบริษัทขนส่ง ต้องเก็บเลขติดตาม/วันที่จริงไว้ และไม่แจ้งว่า Detail ขาดเพียงเพราะไม่มีบริษัทขนส่ง
-- [ ] ตรวจว่าข้อมูลออเดอร์เก่าที่ `detail_missing_fields=shipping_carrier` อย่างเดียวไม่ถูกนับ/Repair ซ้ำ; แต่ไม่มีวันนำส่งจริงต้องยังเป็นงานค้างสำหรับ Completed orders
-- [ ] ตรวจ DB SQLite/MySQL, backup/rollback กับ staging copy ของผู้ใช้ และ manual sync/repair กับบัญชีที่ได้รับอนุญาตก่อน Production Acceptance
-- [ ] ห้ามแปล `shipping_carrier` จาก Seller API มาเป็นค่า Buyer API โดยไม่มีหลักฐานว่าผู้ซื้อได้รับข้อมูลนั้นจริง
+- [ ] Orders **ไม่มี** คอลัมน์ `วันที่ได้รับพัสดุ` และไม่มีคอลัมน์ช่องทางชำระเงิน/บริษัทขนส่ง; `วันที่สั่งซื้อ` ยังแสดงข้อมูลตรงจาก Shopee โดยไม่เติมเวลา 00:00 เมื่อไม่มีเวลา
+- [ ] สถานะคำสั่งซื้อจาก Shopee ยังแสดง แต่ไม่ใช้ Completed เป็นหลักฐานวันนำส่งถึงผู้รับ
+- [ ] Analytics แหล่งวันที่แสดงเฉพาะ created/order date/unknown ไม่ใช้ `delivered_at` และ `completed_at` เป็นตัวจัดประเภท
+- [ ] Completed Order ไม่มีวันนำส่ง ไม่ติดคิว Repair เฉพาะเพราะขาดวันที่; Detail state หมายถึงตรวจข้อมูลแล้ว ไม่ใช่ยืนยันว่าผู้รับได้พัสดุ
+- [ ] สถานะ legacy partial + `detail_missing_fields=delivered_at` เดี่ยว/ผสมกับ `payment_method`, `shipping_carrier` ต้องไม่นับค้างทั้ง Repair queue และ /api/status.php
+- [ ] ออเดอร์ที่ยังไม่เคยตรวจ Detail, API error, account switching และ missing field อื่นยังเข้าคิวได้อย่างปลอดภัย
+- [ ] สำรองและ Restore ฐานข้อมูลเก่าบน staging; ยืนยันว่า `delivered_at`, `delivery_date_source`, `completed_at`, `tracking_number` และข้อมูลออเดอร์เดิมยังอยู่ โดยไม่เผยแพร่ข้อมูลเหล่านั้นเป็นหลักฐานที่ยืนยันแล้ว
+- [ ] ทดสอบการโหลด Connector 2.4.13, PHP 2.5.6 และตรวจ log เฉพาะที่ปกปิดข้อมูลผู้ใช้แล้ว
 
-หลักฐาน Source และ Tests: [PAN v2.5.5 shipping policy](PAN-v2.5.5-SHIPPING-ACCEPTANCE.md) · [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37938489873). Live Shopee session ยังไม่ผ่านการตรวจรับ
+**หลักฐานอัตโนมัติ:** [PAN v2.5.6 CI](https://github.com/herogamee/PAN/actions/runs/37942186241) · [Retirement policy](PAN-v2.5.6-DELIVERY-FIELD-RETIREMENT.md). **Live Shopee / historical production restore: ยังไม่ได้ตรวจรับ**.
