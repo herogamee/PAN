@@ -230,6 +230,49 @@ try {
         'transaction rollback leaves no partial order, items or batch');
     $db->exec('DROP TRIGGER pan_ci_fail');
 
+    // Regression: an older collector silently stored 2 rows / 2 pieces for a
+    // 3-line, 5-piece order. Importing a confirmed complete snapshot must repair
+    // the variant collision and purchased quantities idempotently.
+    $oldPants=fixture('CI-QUANTITY','shopee:400:101:0','CI-A');
+    $oldPants['product_name']='Pants';$oldPants['variant_name']='Black';
+    $oldRod=fixture('CI-QUANTITY','shopee:400:202:0','CI-A');
+    $oldRod['product_name']='Fishing rod';$oldRod['variant_name']='5#';
+    import_test($db,[$oldPants,$oldRod],'qty-legacy');
+    $quantityId=(int)row_for($db,'CI-QUANTITY')['id'];
+    $qtyStatement=$db->prepare('SELECT COALESCE(SUM(quantity),0) FROM order_items WHERE order_id=?');
+    $qtyStatement->execute([$quantityId]);
+    test_check((int)$qtyStatement->fetchColumn()===2,'reproduce historical order with wrongly stored 2 pieces');
+
+    $pantsA=fixture('CI-QUANTITY','shopee:400:101:variant-fixture-w','CI-A');
+    $pantsA['product_name']='Pants';$pantsA['variant_name']='W';
+    $pantsB=fixture('CI-QUANTITY','shopee:400:101:variant-fixture-black','CI-A');
+    $pantsB['product_name']='Pants';$pantsB['variant_name']='Black';
+    $rod=fixture('CI-QUANTITY','shopee:400:202:variant-fixture-5','CI-A',3);
+    $rod['product_name']='Fishing rod';$rod['variant_name']='5#';
+
+    $invalid=$rod;$invalid['quantity']=0;
+    check_throws(fn()=>import_test($db,[$pantsA,$pantsB,$invalid],'qty-invalid'),
+        'invalid source quantity never becomes one and rejects entire page');
+    $qtyStatement->execute([$quantityId]);
+    test_check((int)$qtyStatement->fetchColumn()===2,'invalid import preserves legacy rows unchanged');
+    check_throws(fn()=>import_test($db,[$pantsA,$pantsA,$rod],'qty-duplicate'),
+        'duplicate product identity in one order snapshot rejected before upsert');
+    $qtyStatement->execute([$quantityId]);
+    test_check((int)$qtyStatement->fetchColumn()===2,'duplicate identity cannot corrupt previous quantity');
+
+    import_test($db,[$pantsA,$pantsB,$rod],'qty-corrected');
+    $qtyStatement->execute([$quantityId]);
+    test_check((int)$qtyStatement->fetchColumn()===5,'complete order snapshot repairs 2 pieces to 5');
+    $countForOrder=$db->prepare('SELECT COUNT(*) FROM order_items WHERE order_id=?');
+    $countForOrder->execute([$quantityId]);
+    test_check((int)$countForOrder->fetchColumn()===3,'distinct pants variants and rod retained as three rows');
+    import_test($db,[$pantsA,$pantsB,$rod],'qty-repeat');
+    $qtyStatement->execute([$quantityId]);$countForOrder->execute([$quantityId]);
+    test_check((int)$qtyStatement->fetchColumn()===5 && (int)$countForOrder->fetchColumn()===3,
+        'repeat targeted order import does not duplicate pieces');
+    $otherAccount=row_for($db,'CI-A1');
+    test_check($otherAccount!==null, 'single order repair did not delete other orders');
+
     if($mode==='mysql'){
         // Genuine SQLite→MySQL migration into the **same disposable** database,
         // after deleting all synthetic test rows (no source production files).

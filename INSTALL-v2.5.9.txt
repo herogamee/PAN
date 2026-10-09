@@ -1,0 +1,11 @@
+PAN Core 2.5.9 + Shopee Connector 2.4.14
+
+1. BACKUP the entire PAN application, active database and storage/config.php securely before changes.
+2. Apply Patch ONLY to exact Core 2.5.8 baseline; preserve storage/config.php, SQLite/DB, WAL, profiles, and accounts. Or stage Complete in an empty directory.
+3. Confirm VERSION=2.5.9 and connectors/shopee-extension/manifest.json version=2.4.14.
+4. Reload the unpacked Shopee Chrome Extension (this is a connector release, unlike v2.5.8).
+5. Open Shopee purchase page and login. In PAN Connector, use "ตรวจจำนวนสินค้าเฉพาะ Order" for your authorized order.
+6. Enter the order identifier and independently confirmed total purchased pieces (for the reported example: 5). It will not write anything unless a complete API-derived snapshot matches that total.
+7. Refresh PAN ?page=orders to see product variants/quantities after success; audit sum and account. If mismatch persists, no data is overwritten: report sanitized field names/types, not raw buyer data.
+8. Never run a destructive Full Sync to force the count before checking staged backup and old Order rows. No database migration is necessary.
+9. CI tests use synthetic fixtures, not your live Shopee data; manually verify the target Order before production acceptance.

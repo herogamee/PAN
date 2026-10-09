@@ -1,4 +1,4 @@
-# PAN 2.5.8 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.9 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -10,9 +10,19 @@
 - Legacy/functional alias: `https://commerce.itoom.work` → redirect ไป `https://pan.itoom.work`
 - Theme: Orange / White / Charcoal
 
+## PAN 2.5.9 — Quantity / Variant Safety
+
+- แก้การสร้าง `product_key` ไม่ให้ตัวเลือกสินค้าที่ไม่มี `model_id` เขียนทับกัน
+- อ่านจำนวนที่ซื้อจากฟิลด์ที่ระบุจริง เช่น `amount`, `quantity_purchased`, `model_quantity_purchased` โดยไม่สมมติให้เป็น 1
+- นำเข้าทั้งหน้าแบบ fail-closed หากจำนวนหาย/กำกวม, duplicate SKU key หรือสรุปจำนวนต้นทางมากกว่าที่อ่านได้
+- ใน Shopee Connector มีเมนูตรวจและอัปเดต **เฉพาะหนึ่ง Order** โดยต้องกรอกจำนวนชิ้นจริงที่ผู้ใช้เห็นใน Shopee ก่อน ระบบจะไม่บันทึกเมื่อจำนวนจาก API ไม่ตรง และไม่แตะ Full Sync checkpoint
+- จำนวนในหน้า PAN คือจำนวนที่เคยบันทึกไว้ ยังไม่ถือว่าได้รับการยืนยันกับ Shopee จนกว่าจะ recheck; ไม่แก้ค่าออเดอร์เก่าเองโดยเดา
+- [Release Notes v2.5.9](RELEASE-NOTES-v2.5.9.md) · [Quantity Acceptance](docs/PAN-v2.5.9-QUANTITY-ACCEPTANCE.md)
+
+
 ## Roadmap และงานที่ค้าง
 
-แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.8 + Shopee Connector v2.4.13 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
+แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.9 + Shopee Connector v2.4.14 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
 
 ## PAN 2.5.6 — ถอดวันที่ได้รับพัสดุที่ Buyer API ยังยืนยันไม่ได้
 
@@ -337,7 +347,7 @@ PAN
 
 ---
 
-Version: **PAN 2.5.8**  
+Version: **PAN 2.5.9**  
 Character: **น้องแพน**  
 Role: **Marketplace & Commerce Assistant**  
 Brand: **itoom.work**

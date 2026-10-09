@@ -1,5 +1,5 @@
 const DEFAULT_HUB='https://pan.itoom.work';
-const VERSION='2.4.13';
+const VERSION='2.4.14';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const txt=v=>v==null?'':String(v);
 const num=v=>{const n=Number(v);if(!Number.isFinite(n))return 0;return Math.abs(n)>=100000?n/100000:n};
@@ -161,10 +161,144 @@ function detailMeta(json){
 }
 function extractBestListDate(d){for(const p of ['info_card.order_create_time','info_card.create_time','order_create_time','create_time','pc_processing_info.create_time']){const event=parseShopeeCreated(getPath(d,p));if(event)return {...event,label:'order creation time',path:p};}return null;}
 function extractOrderIdentity(d,info,cards){for(const [source,val] of [['info_card.order_id',info?.order_id],['info_card.order_sn',info?.order_sn],['detail.order_id',d?.order_id],['detail.order_sn',d?.order_sn],['card.order_id',cards?.[0]?.order_id],['card.order_sn',cards?.[0]?.order_sn]])if(val!==undefined&&val!==null&&String(val).trim()!=='')return {id:String(val).trim(),source};return null;}
-function normalizeOrder(raw,account,dateOverride=null,detail={}){const d=raw||{},info=d?.info_card||{},cards=Array.isArray(info?.order_list_cards)?info.order_list_cards:[];if(!cards.length)return {orderNo:'',items:[],ignoredReason:'missing_order_cards'};const identity=extractOrderIdentity(d,info,cards);if(!identity)return {orderNo:'',items:[],ignoredReason:'missing_order_identity'};const listType=Number(d?.list_type);if(![3,4,7,8,9,12].includes(listType))return {orderNo:identity.id,items:[],ignoredReason:'unknown_list_type'};if(listType===4)return {orderNo:identity.id,items:[],ignoredReason:'cancelled_order'};const dt=dateOverride||extractBestListDate(d);const orderDate=dt?.date||(dt?.epoch?dateOnly(dt.epoch):'');const createdAt=dt?.datetime||(dt?.epoch?formatBangkok(dt.epoch):'');const shop=cards[0]?.shop_info||{},shopId=shop?.shop_id??shop?.shopid??cards[0]?.shop_id??d?.shop_id??null,shopName=txt(shop?.shop_name||shop?.username||d?.shop_name||'');if(!shopName)return {orderNo:identity.id,items:[],ignoredReason:'missing_shop'};let flat=[];for(const c of cards){const groups=c?.product_info?.item_groups;if(Array.isArray(groups))for(const g of groups)if(Array.isArray(g?.items))flat.push(...g.items);}if(!flat.length)return {orderNo:identity.id,items:[],ignoredReason:'missing_items'};
-  const prepared=[];let rawSubtotal=0;for(const card of flat){if(Number(card?.status)===3)continue;const itemId=card?.item_id??card?.itemid??null,modelId=card?.model_id??card?.modelid??card?.variation_id??0,name=txt(card?.name||card?.item_name||'').trim(),qty=Math.max(1,Number(card?.amount??card?.quantity??1)||1),sell=num(card?.item_price??card?.price??0);if(!name||sell<=0)continue;const original=num(card?.original_price??card?.model_original_price??card?.price_before_discount??card?.item_price??0),line=sell*qty;rawSubtotal+=line;prepared.push({card,itemId,modelId,name,qty,sell,original,line});}if(!prepared.length)return {orderNo:identity.id,items:[],ignoredReason:'missing_valid_items'};
-  const finalTotal=num(info?.final_total??info?.total_payable??info?.subtotal??0);let shippingCandidate=null;for(const k of ['actual_shipping_fee','buyer_shipping_fee']){const f=deepFind(info,[k],4);if(f){shippingCandidate=num(f.value);break;}}const shippingFee=shippingCandidate==null?0:Math.max(0,shippingCandidate);let merchandisePaid=null,pricingMethod='order_total_only_unallocated';if(finalTotal>0&&shippingCandidate!=null&&finalTotal>=shippingFee){const candidate=finalTotal-shippingFee;if(candidate>=0&&candidate<=rawSubtotal*1.05){merchandisePaid=Math.min(rawSubtotal,candidate);pricingMethod='final_total_minus_shipping_proportional';}}else if(finalTotal>0&&finalTotal<=rawSubtotal){merchandisePaid=finalTotal;pricingMethod='final_total_proportional';}const ratio=(merchandisePaid!=null&&rawSubtotal>0)?merchandisePaid/rawSubtotal:1,discountTotal=merchandisePaid!=null?Math.max(0,rawSubtotal-merchandisePaid):0,status=statusFromListType(listType),purchaseState=[3,7,8].includes(listType)?'purchase':'non_purchase';
-  const out=[];for(const p of prepared){const actualLine=p.line*ratio,actualUnit=actualLine/p.qty,allocatedDiscount=Math.max(0,p.line-actualLine),card=p.card,variant=txt(card?.model_name||card?.variation||card?.variation_name||''),img=card?.image??card?.image_url??card?.image_info??'',image=typeof img==='object'?(img?.image_url||img?.image_id||''):img,key=`shopee:${shopId||0}:${p.itemId||p.name}:${p.modelId||0}`;const categoryId=txt(card?.category_id??card?.catid??card?.category?.category_id??card?.category?.catid??'');const categoryName=txt(card?.category_name??card?.category?.name??card?.category?.display_name??'');const categoryPath=txt(card?.category_path??card?.category?.path??'');const familyName=normalizeFamilyName(p.name);out.push({platform:'shopee_th',order_no:identity.id,order_date:orderDate,order_created_at:createdAt,shop_name:shopName,product_key:key,product_name:p.name,variant_name:variant,image_url:imageUrl(image),product_url:productUrl(shopId,p.itemId),quantity:p.qty,original_price:p.original,purchase_price:p.sell,net_unit_price:actualUnit,actual_unit_price:actualUnit,actual_line_total:actualLine,allocated_discount:allocatedDiscount,total_paid:Math.max(0,finalTotal),raw_subtotal:rawSubtotal,subtotal:rawSubtotal,merchandise_paid:merchandisePaid==null?0:merchandisePaid,shipping_fee:shippingFee,voucher_discount:0,coins_discount:0,platform_discount:0,discount_total:discountTotal,pricing_method:pricingMethod,order_status:status,list_type:listType,purchase_state:purchaseState,validation_state:'verified_v200',source_account_id:txt(account?.userid||''),source_account_username:txt(account?.username||account?.nickname||''),date_source:dt?.path||'unknown',identity_source:identity.source,marketplace_shop_id:txt(shopId||''),marketplace_item_id:txt(p.itemId||''),marketplace_model_id:txt(p.modelId||''),marketplace_category_id:categoryId,marketplace_category_name:categoryName,marketplace_category_path:categoryPath,category_source:categoryName||categoryId?'order_list':'',category_updated_at:categoryName||categoryId?formatBangkok(Math.floor(Date.now()/1000)):'',product_family_key:familyName?`name:${familyName}`:key,product_family_name:p.name,...detail,raw_json:JSON.stringify({order_id:identity.id,list_type:listType,order_status:status,date_source:dt?.path||'unknown',shop_id:shopId,item_id:p.itemId,model_id:p.modelId,category_id:categoryId,category_name:categoryName,item_price:p.sell,quantity:p.qty,final_total:finalTotal,pricing_method:pricingMethod,source_account_id:txt(account?.userid||'')})});}return {orderNo:identity.id,items:out,ignoredReason:''};}
+/** Qty must come from a purchased-item field. Never silently invent one piece. */
+function purchasedItemQuantity(card){
+  const known=['amount','quantity_purchased','model_quantity_purchased','purchased_quantity','quantity'];
+  let chosen=null,source='';
+  for(const field of known){
+    const raw=card?.[field];
+    if(raw===undefined||raw===null||raw==='')continue;
+    const n=Number(raw);
+    if(!Number.isSafeInteger(n)||n<1||n>100000)return {ok:false,reason:'invalid_quantity',field};
+    if(chosen!==null&&chosen!==n)return {ok:false,reason:'conflicting_quantity_fields',field};
+    if(chosen===null){chosen=n;source=field;}
+  }
+  return chosen===null?{ok:false,reason:'missing_quantity'}:{ok:true,quantity:chosen,field:source};
+}
+/** 64-bit FNV-1a for stable SKU identity when a Shopee variant has no model_id. */
+function lineIdentityHash(s){
+  let hash=0xcbf29ce484222325n;
+  for(const ch of String(s)){const code=ch.codePointAt(0);hash^=BigInt(code);hash=BigInt.asUintN(64,hash*0x100000001b3n);}
+  return hash.toString(16).padStart(16,'0');
+}
+function normalizedVariantText(v){return txt(v).trim().toLocaleLowerCase('en').replace(/\s+/g,' ');}
+function productLineKey(shopId,itemId,modelId,name,variant){
+  const identity=txt(itemId||'').trim()||`name-${lineIdentityHash(name)}`;
+  const model=txt(modelId||'').trim();
+  if(model&&model!=='0')return `shopee:${txt(shopId||0)}:${identity}:${model}`;
+  const v=normalizedVariantText(variant);
+  return `shopee:${txt(shopId||0)}:${identity}:${v?'variant-'+lineIdentityHash(v):'0'}`;
+}
+/** Parsed snapshot is all-or-nothing so DB never prunes good variants from an ambiguous page. */
+function normalizeOrder(raw,account,dateOverride=null,detail={}){
+  const d=raw||{},info=d?.info_card||{};
+  const cards=Array.isArray(info?.order_list_cards)?info.order_list_cards:[];
+  if(!cards.length)return {orderNo:'',items:[],ignoredReason:'missing_order_cards'};
+  const identity=extractOrderIdentity(d,info,cards);
+  if(!identity)return {orderNo:'',items:[],ignoredReason:'missing_order_identity'};
+  const listType=Number(d?.list_type);
+  if(![3,4,7,8,9,12].includes(listType))return {orderNo:identity.id,items:[],ignoredReason:'unknown_list_type'};
+  if(listType===4)return {orderNo:identity.id,items:[],ignoredReason:'cancelled_order'};
+  const dt=dateOverride||extractBestListDate(d);
+  const orderDate=dt?.date||(dt?.epoch?dateOnly(dt.epoch):'');
+  const createdAt=dt?.datetime||(dt?.epoch?formatBangkok(dt.epoch):'');
+  const shop=cards[0]?.shop_info||{};
+  const shopId=shop?.shop_id??shop?.shopid??cards[0]?.shop_id??d?.shop_id??null;
+  const shopName=txt(shop?.shop_name||shop?.username||d?.shop_name||'');
+  if(!shopName)return {orderNo:identity.id,items:[],ignoredReason:'missing_shop'};
+  const flat=[];
+  for(const c of cards){
+    const subShopId=c?.shop_info?.shop_id??c?.shop_info?.shopid??c?.shop_id??shopId;
+    if(shopId!=null&&subShopId!=null&&String(subShopId)!==String(shopId))
+      return {orderNo:identity.id,items:[],ignoredReason:'mixed_shop_cards'};
+    const groups=c?.product_info?.item_groups;
+    if(Array.isArray(groups))for(const g of groups)if(Array.isArray(g?.items))flat.push(...g.items);
+  }
+  if(!flat.length)return {orderNo:identity.id,items:[],ignoredReason:'missing_items'};
+  const preparedByKey=new Map();let returnedQty=0;
+  for(const card of flat){
+    const count=purchasedItemQuantity(card);
+    if(!count.ok)return {orderNo:identity.id,items:[],ignoredReason:count.reason};
+    if(Number(card?.status)===3){returnedQty+=count.quantity;continue;}
+    const itemId=card?.item_id??card?.itemid??null;
+    const modelId=card?.model_id??card?.modelid??card?.variation_id??0;
+    const name=txt(card?.name||card?.item_name||'').trim();
+    const variant=txt(card?.model_name||card?.variation||card?.variation_name||'').trim();
+    const sell=num(card?.item_price??card?.price??0);
+    if(!name||!Number.isFinite(sell)||sell<0)return {orderNo:identity.id,items:[],ignoredReason:'missing_valid_items'};
+    const original=num(card?.original_price??card?.model_original_price??card?.price_before_discount??card?.item_price??0);
+    const key=productLineKey(shopId,itemId,modelId,name,variant);
+    const old=preparedByKey.get(key);
+    if(old){
+      // The same SKU may occur in several shipping groups, but different variants
+      // or prices sharing a key are an identity error, never last-write-wins.
+      if(old.name!==name||normalizedVariantText(old.variant)!==normalizedVariantText(variant)||old.sell!==sell)
+        return {orderNo:identity.id,items:[],ignoredReason:'product_identity_collision'};
+      old.qty+=count.quantity;old.line+=sell*count.quantity;
+      old.qtySources.add(count.field);
+    }else preparedByKey.set(key,{card,itemId,modelId,name,variant,qty:count.quantity,sell,original,
+      line:sell*count.quantity,key,qtySources:new Set([count.field])});
+  }
+  const prepared=[...preparedByKey.values()];
+  if(!prepared.length)return {orderNo:identity.id,items:[],ignoredReason:'missing_valid_items'};
+  const itemQty=prepared.reduce((sum,p)=>sum+p.qty,0);
+  const announced=Number(info?.product_count);
+  // product_count may mean distinct lines or purchased units across market regions.
+  // It is still a strong shortage signal if it exceeds ALL observed units,
+  // including skipped returned lines. Never invent extra items to fill the gap.
+  if(info?.product_count!==undefined&&info?.product_count!==null&&info?.product_count!==''&&
+      Number.isSafeInteger(announced)&&announced>itemQty+returnedQty)
+    return {orderNo:identity.id,items:[],ignoredReason:'product_count_exceeds_snapshot'};
+  const rawSubtotal=prepared.reduce((sum,p)=>sum+p.line,0);
+  const finalTotal=num(info?.final_total??info?.total_payable??info?.subtotal??0);
+  let shippingCandidate=null;
+  for(const k of ['actual_shipping_fee','buyer_shipping_fee']){
+    const f=deepFind(info,[k],4);if(f){shippingCandidate=num(f.value);break;}
+  }
+  const shippingFee=shippingCandidate==null?0:Math.max(0,shippingCandidate);
+  let merchandisePaid=null,pricingMethod='order_total_only_unallocated';
+  if(finalTotal>0&&shippingCandidate!=null&&finalTotal>=shippingFee){
+    const candidate=finalTotal-shippingFee;
+    if(candidate>=0&&candidate<=rawSubtotal*1.05){merchandisePaid=Math.min(rawSubtotal,candidate);pricingMethod='final_total_minus_shipping_proportional';}
+  }else if(finalTotal>0&&finalTotal<=rawSubtotal){merchandisePaid=finalTotal;pricingMethod='final_total_proportional';}
+  const ratio=merchandisePaid!=null&&rawSubtotal>0?merchandisePaid/rawSubtotal:1;
+  const discountTotal=merchandisePaid!=null?Math.max(0,rawSubtotal-merchandisePaid):0;
+  const status=statusFromListType(listType),purchaseState=[3,7,8].includes(listType)?'purchase':'non_purchase';
+  const out=[];
+  for(const p of prepared){
+    const actualLine=p.line*ratio,actualUnit=actualLine/p.qty;
+    const card=p.card,img=card?.image??card?.image_url??card?.image_info??'';
+    const image=typeof img==='object'?(img?.image_url||img?.image_id||''):img;
+    const categoryId=txt(card?.category_id??card?.catid??card?.category?.category_id??card?.category?.catid??'');
+    const categoryName=txt(card?.category_name??card?.category?.name??card?.category?.display_name??'');
+    const categoryPath=txt(card?.category_path??card?.category?.path??'');
+    const familyName=normalizeFamilyName(p.name);
+    out.push({platform:'shopee_th',order_no:identity.id,order_date:orderDate,order_created_at:createdAt,
+      shop_name:shopName,product_key:p.key,product_name:p.name,variant_name:p.variant,
+      image_url:imageUrl(image),product_url:productUrl(shopId,p.itemId),quantity:p.qty,
+      original_price:p.original,purchase_price:p.sell,net_unit_price:actualUnit,
+      actual_unit_price:actualUnit,actual_line_total:actualLine,
+      allocated_discount:Math.max(0,p.line-actualLine),total_paid:Math.max(0,finalTotal),
+      raw_subtotal:rawSubtotal,subtotal:rawSubtotal,merchandise_paid:merchandisePaid==null?0:merchandisePaid,
+      shipping_fee:shippingFee,voucher_discount:0,coins_discount:0,platform_discount:0,
+      discount_total:discountTotal,pricing_method:pricingMethod,order_status:status,list_type:listType,
+      purchase_state:purchaseState,validation_state:'verified_v200',
+      source_account_id:txt(account?.userid||''),source_account_username:txt(account?.username||account?.nickname||''),
+      date_source:dt?.path||'unknown',identity_source:identity.source,
+      marketplace_shop_id:txt(shopId||''),marketplace_item_id:txt(p.itemId||''),marketplace_model_id:txt(p.modelId||''),
+      marketplace_category_id:categoryId,marketplace_category_name:categoryName,
+      marketplace_category_path:categoryPath,category_source:categoryName||categoryId?'order_list':'',
+      category_updated_at:categoryName||categoryId?formatBangkok(Math.floor(Date.now()/1000)):'',
+      product_family_key:familyName?`name:${familyName}`:p.key,product_family_name:p.name,...detail,
+      raw_json:JSON.stringify({order_id:identity.id,list_type:listType,order_status:status,
+        date_source:dt?.path||'unknown',shop_id:shopId,item_id:p.itemId,model_id:p.modelId,
+        category_id:categoryId,category_name:categoryName,item_price:p.sell,
+        quantity:p.qty,quantity_sources:[...p.qtySources],source_product_count:Number.isSafeInteger(announced)?announced:null,
+        normalized_total_quantity:itemQty,final_total:finalTotal,pricing_method:pricingMethod,
+        source_account_id:txt(account?.userid||'')})});
+  }
+  return {orderNo:identity.id,items:out,itemQuantity:itemQty,sourceProductCount:Number.isSafeInteger(announced)?announced:null,ignoredReason:''};
+}
 
 async function getAllStates(){return (await chrome.storage.local.get('syncStates')).syncStates||{};}
 async function getState(accountId=''){const all=await getAllStates();return accountId?all[String(accountId)]||{}:(await chrome.storage.local.get('lastAccountId')).lastAccountId?all[String((await chrome.storage.local.get('lastAccountId')).lastAccountId)]||{}:{};}
@@ -180,6 +314,7 @@ async function resolveDetail(tabId,orderId){const r=await mainWorldDetail(tabId,
 let runningJob=null;
 async function processSyncRecords(raw,account,hub,scanId,pageUrl,seenOrderNos=[],options={}){
   const batch=[],cancelledNos=[];let orderCount=0,ignored=0,cancelled=0,dateUnknown=0,newUnique=0,duplicateRecords=0;const reasonCounts={};
+  const pageOrderSnapshots=new Map();
   const seen=new Set((Array.isArray(seenOrderNos)?seenOrderNos:[]).map(String));
   for(const r of raw){
     const n=normalizeOrder(r,account);
@@ -189,11 +324,20 @@ async function processSyncRecords(raw,account,hub,scanId,pageUrl,seenOrderNos=[]
       reasonCounts.cancelled_order=(reasonCounts.cancelled_order||0)+1;continue;
     }
     if(!extractBestListDate(r))dateUnknown++;
-    if(n.items.length){orderCount++;batch.push(...n.items);}
+    if(n.items.length){
+      const fingerprint=JSON.stringify(n.items.map(x=>[x.product_key,x.variant_name,x.quantity,x.purchase_price]).sort((a,b)=>a[0].localeCompare(b[0])));
+      const previous=pageOrderSnapshots.get(n.orderNo);
+      if(previous!==undefined){
+        if(previous!==fingerprint)throw new Error('Conflicting duplicate Order item snapshots on same page; no import/checkpoint');
+        continue; // identical order cards repeated on the same page are not a second order
+      }
+      pageOrderSnapshots.set(n.orderNo,fingerprint);
+      orderCount++;batch.push(...n.items);
+    }
     else{ignored++;const reason=n.ignoredReason||'unknown';reasonCounts[reason]=(reasonCounts[reason]||0)+1;}
   }
-  const structural=['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].reduce((s,k)=>s+(reasonCounts[k]||0),0);
-  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรงกับ Normalizer 2.4.13 · หยุดก่อนเลื่อน checkpoint · structural=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · sample=${JSON.stringify(raw.find(x=>{const n=normalizeOrder(x,account);return ['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items'].includes(n.ignoredReason)})||raw[0]).slice(0,6000)}`);
+  const structural=['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items','missing_quantity','invalid_quantity','conflicting_quantity_fields','product_identity_collision','product_count_exceeds_snapshot','mixed_shop_cards'].reduce((s,k)=>s+(reasonCounts[k]||0),0);
+  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรง (จำนวนสินค้า/ตัวเลือก) v2.4.14 · ไม่ได้นำเข้า / ไม่เลื่อน checkpoint · invalid=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · ไม่มี raw buyer data ใน Error`);
   let cancelledResult={deleted:0},importResult={};
   if(cancelledNos.length)cancelledResult=await postCancelled(hub,String(account.userid),cancelledNos)||{deleted:0};
   if(batch.length)importResult=await postBatch(hub,batch,{url:pageUrl,scanId,jobType:options.jobType||'sync'})||{};
@@ -426,6 +570,90 @@ async function runRecentSync(tabId,fresh=true){
   }catch(e){if(aid)await setState(aid,{running:false,error:String(e.message||e),status:'error'});else throw e;}
   finally{runningJob=null;}
 }
+/** Recheck one order without changing Full/Recent Sync checkpoints or other orders. */
+async function findSingleOrderInShopee(tabId,target,account,onPage=async()=>{}){
+  const identity=record=>txt(record?.info_card?.order_id??record?.info_card?.order_sn??record?.order_id??record?.order_sn??'');
+  const detail=await mainWorldDetail(tabId,target);
+  if(detail?.http===401||detail?.http===403||Number(detail?.json?.error||0)===90309999)
+    throw new Error('Shopee ไม่อนุญาต Order Detail / ต้องยืนยันเซสชัน');
+  const data=detail?.json?.data;
+  if(detail?.ok&&Number(detail?.json?.error||0)===0&&data){
+    for(const body of [data,data?.order_list_detail,data?.order_detail,data?.order_info]){
+      const candidate=orderRecordFromEntry(body);
+      if(candidate?.info_card?.order_list_cards&&[3,7,8,9,12].includes(Number(candidate?.list_type))){
+        if(identity(candidate)!==target)throw new Error('Shopee Order Detail identity mismatch; no write');
+        return {record:candidate,url:detail.url,source:'detail'};
+      }
+    }
+  }
+  // Some Buyer detail responses contain only metadata; walk the existing
+  // authenticated order-list endpoint, never scrape unrelated site content.
+  const limit=20,maxPages=320;let visited=0;
+  const contexts=[{kind:'primary',type:null},...[3,7,8,9,12].map(type=>({kind:'status',type}))];
+  for(const context of contexts){
+    let offset=0;const seen=new Set();
+    while(visited<maxPages){
+      if(seen.has(offset))throw new Error('Shopee pagination loop during single-order check');
+      seen.add(offset);visited++;
+      if(String((await accountForTab(tabId)).userid)!==String(account.userid))
+        throw new Error('Shopee account switched during single-order check; no write');
+      await onPage(visited,context.kind,context.type);
+      const page=context.kind==='primary'?await mainWorldPage(tabId,offset,limit):await mainWorldStatusPage(tabId,context.type,offset,limit);
+      const error=Number(page?.json?.error||0);
+      if([401,403,429].includes(page?.http)||error===90309999)throw new Error('Shopee session or rate limit blocked targeted order check');
+      if(error||!page?.ok){
+        if(context.kind==='status'&&canSkipOptionalStatusApiError(context.type,error))break;
+        if(context.kind==='primary'&&visited===1)break; // unsupported primary: status fallback
+        throw new Error(`Shopee order-list error ${error||page?.http||0}, no data changed`);
+      }
+      const parsed=context.kind==='primary'?pickDetailsInfo(page.json):pickStatusDetailsInfo(page.json);
+      if(!parsed.recognized){if(context.kind==='primary'&&offset===0)break;throw new Error('Shopee order list schema unknown, no data changed');}
+      const selected=parsed.records.find(rec=>identity(rec)===target);
+      if(selected)return {record:selected.list_type===undefined&&context.type?{...selected,list_type:context.type}:selected,url:page.url,source:context.kind};
+      const next=nextOffset(page.json,offset,limit,parsed.rawCount);
+      if(next===-1||parsed.rawCount===0)break;
+      if(!Number.isSafeInteger(next)||next<=offset)throw new Error('Shopee page cursor invalid; no data changed');
+      offset=next;
+      await sleep(170);
+    }
+  }
+  throw new Error(visited>=maxPages?'Reached read-only search limit without finding order; no PAN data changed':'Order not found in available Shopee Buyer API views; no PAN data changed');
+}
+async function refreshSingleOrder(tabId,orderNo,expectedQuantity){
+  const target=txt(orderNo).trim();const expected=Number(expectedQuantity);
+  if(!/^[0-9A-Za-z-]{8,64}$/.test(target))throw new Error('ระบุเลข Order ให้ถูกต้อง');
+  if(!Number.isSafeInteger(expected)||expected<1||expected>100000)throw new Error('ระบุจำนวนสินค้าที่ตรวจจาก Shopee (ชิ้น) ก่อน');
+  if(runningJob)throw new Error('มีงาน Sync/Repair กำลังทำอยู่');
+  runningJob='single-order';let aid='';
+  try{
+    const account=await accountForTab(tabId);aid=String(account.userid);
+    const publish=async(patch)=>setState(aid,{quantityAudit:{orderNo:target,expected,...patch}});
+    await publish({status:'scanning',message:'กำลังอ่าน Shopee เฉพาะ Order นี้; ยังไม่แก้ข้อมูล PAN'});
+    const source=await findSingleOrderInShopee(tabId,target,account,async count=>{
+      if(count===1||count%10===0)await publish({status:'scanning',message:`กำลังค้นหา Shopee ${count} หน้า (ยังไม่แก้ข้อมูล)`});
+    });
+    const candidate=normalizeOrder(source.record,account);
+    if(candidate.ignoredReason||!candidate.items?.length)
+      throw new Error(`Order item snapshot ไม่ครบ (${candidate.ignoredReason||'empty'}); no PAN changes`);
+    if(candidate.orderNo!==target)throw new Error('Order identifier mismatch; no PAN changes');
+    const recorded=candidate.itemQuantity;
+    if(recorded!==expected){
+      await publish({status:'mismatch',actual:recorded,lines:candidate.items.length,
+        message:`Shopee API อ่านได้ ${recorded} ชิ้น (${candidate.items.length} ตัวเลือก) แต่คุณยืนยัน ${expected} ชิ้น — ไม่เขียนทับข้อมูล PAN`});
+      return;
+    }
+    if(String((await accountForTab(tabId)).userid)!==aid)throw new Error('บัญชี Shopee เปลี่ยนระหว่างตรวจ; no PAN changes');
+    const cfg=await chrome.storage.local.get('hubUrl');
+    const hub=(cfg.hubUrl||DEFAULT_HUB).replace(/\/$/,'');
+    const result=await postBatch(hub,candidate.items,{url:source.url,scanId:crypto.randomUUID(),jobType:'single_order_recheck'});
+    await publish({status:'updated',actual:recorded,lines:candidate.items.length,
+      message:`อัปเดตเฉพาะ Order นี้แล้ว · ${candidate.items.length} ตัวเลือก · ${recorded} ชิ้น · เปิด PAN ใหม่เพื่อดูผล`,updated:Number(result.updated_orders||0)});
+  }catch(e){
+    if(aid)await setState(aid,{quantityAudit:{orderNo:target,expected,status:'error',message:String(e.message||e)}});
+    else throw e;
+  }finally{runningJob=null;}
+}
+
 function reportRecentError(e){chrome.runtime.sendMessage({type:'SYNC_ERROR',error:String(e.message||e)}).catch(()=>{});}
 chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{(async()=>{
   if(msg?.type==='START_SYNC'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runSync(msg.tabId,true).catch(reportRecentError);sendResponse({ok:true});}
@@ -433,6 +661,7 @@ chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{(async()=>{
   else if(msg?.type==='RESUME_SYNC'){const a=await accountForTab(msg.tabId);const st=await getState(String(a.userid));if(st.job==='recent')runRecentSync(msg.tabId,false).catch(reportRecentError);else if(st.job==='repair'&&!st.done)runRepair(msg.tabId,true);else runSync(msg.tabId,false);sendResponse({ok:true});}
   else if(msg?.type==='START_REPAIR'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runRepair(msg.tabId,false,false).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='START_REPAIR_ALL'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runRepair(msg.tabId,false,true).catch(reportRecentError);sendResponse({ok:true});}
+  else if(msg?.type==='REFRESH_SINGLE_ORDER'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');refreshSingleOrder(msg.tabId,msg.orderNo,msg.expectedQuantity).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='START_PRODUCT_ENRICH'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runProductEnrichment(msg.tabId).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='PAUSE_SYNC'){const id=(await chrome.storage.local.get('lastAccountId')).lastAccountId||'';if(id)await setState(id,{paused:true,status:'pausing'});sendResponse({ok:true});}
   else if(msg?.type==='RESET_SYNC'){const id=String(msg.accountId||((await chrome.storage.local.get('lastAccountId')).lastAccountId||''));if(id){const all=await getAllStates();delete all[id];await chrome.storage.local.set({syncStates:all});}sendResponse({ok:true});}

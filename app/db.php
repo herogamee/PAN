@@ -277,6 +277,7 @@ function pan_account_verified_purchase_count(PDO $db,string $accountId): int {
 function pan_validate_import_batch(PDO $db, array $items): string {
     $batchAccount = '';
     $byOrder = [];
+    $seenItems = [];
     foreach ($items as $r) {
         if (!is_array($r)) throw new RuntimeException('Invalid Shopee batch record');
         $name = trim((string)($r['product_name'] ?? ''));
@@ -294,6 +295,18 @@ function pan_validate_import_batch(PDO $db, array $items): string {
             (isset($r['platform']) && (string)$r['platform'] !== 'shopee_th')) {
             throw new RuntimeException('Incomplete or unsupported Shopee batch record; no records imported');
         }
+        // Do not turn a missing/invalid purchased quantity into 1 or allow two
+        // option lines with the same product_key to overwrite each other.
+        $rawQuantity=$r['quantity']??null;
+        if (!(is_int($rawQuantity) || (is_string($rawQuantity) && preg_match('/^[1-9][0-9]*$/D',$rawQuantity))) ||
+            (int)$rawQuantity<1 || (int)$rawQuantity>100000 || strlen($key)>255) {
+            throw new RuntimeException('Missing/invalid purchased quantity or product identity; entire page rejected');
+        }
+        $identity=$orderNo."\0".$key;
+        if (isset($seenItems[$identity])) {
+            throw new RuntimeException('Duplicate SKU identity in one Order snapshot; entire page rejected');
+        }
+        $seenItems[$identity]=true;
         if ($batchAccount !== '' && $account !== $batchAccount) {
             throw new RuntimeException('Mixed Shopee accounts in import batch; no records imported');
         }

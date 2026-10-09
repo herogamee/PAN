@@ -44,6 +44,7 @@ $checks=[
  'safe external links are rendered securely' => str_contains($html,'href="https://shopee.co.th/item" target="_blank" rel="noopener noreferrer"'),
  'image uses lazy load' => str_contains($html,'loading="lazy"'),
  'missing product data is distinguished from missing purchase' => str_contains($html,'ไม่ได้หมายความว่าไม่มีการสั่งซื้อจริง'),
+ 'order panels do not claim PAN saved quantities are authoritative Shopee totals' => str_contains($html,'สินค้าที่ PAN บันทึกในคำสั่งซื้อ') && str_contains($html,'จำนวนชิ้นหรือตัวเลือกไม่ตรง'),
  'per-line amounts and quantity are visible' => str_contains($html,'฿50.00') && str_contains($html,'฿40.00') && str_contains($html,'3 ชิ้น'),
  'both details are collapsed by default' => substr_count($html,'class="order-products-row" hidden')===2,
 ];
