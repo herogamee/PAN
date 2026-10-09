@@ -1,0 +1,30 @@
+PAN 2.5.7 / Shopee Connector 2.4.13 — Safe upgrade and data visibility recovery
+=============================================================================
+
+IMPORTANT: This patch DOES NOT restore orders that are physically absent from the
+PAN database. It only stops prior Full Sync reconcile from silently downgrading
+an order's validation_state and makes historical not_seen_full_scan rows visible
+without rewriting/deleting their original values.
+
+1. VERIFY BASE: Existing PAN Core must be exactly 2.5.6; Shopee Connector may
+   remain 2.4.13 unchanged. Do not apply the patch to other baselines.
+2. BACK UP (to private storage) current app files, storage/config.php and DB.
+   SQLite backup must be consistent with WAL; do not copy a busy raw sqlite file.
+3. Stage a copy of the site and database first; compare totals by account and
+   validation_state using docs/PAN-v2.5.7-ORDER-VISIBILITY-ACCEPTANCE.md.
+4. Extract pan/ over your PAN directory, replacing source files only.
+   DO NOT delete/recreate runtime storage/, accounts, cookies or private profiles.
+   On Windows XAMPP3 usual location is C:\xampp3\htdocs\pan\.
+5. Verify PAN VERSION=2.5.7 and Chrome manifest version=2.4.13. Run php -l
+   on changed PHP; tests/order-timeline.php, tests/order-ui.php,
+   tests/visibility-sql.py (Python 3), and PHP PDO tests on staging.
+6. Open Orders with NO filters. Check 'เคยไม่พบใน Full Sync', 'ไม่ทราบวันสั่งซื้อ',
+   and 'PAN พบ/ซิงก์เดือนนี้'. Import/last seen month is NOT purchase month.
+7. DO NOT reset/deactivate account, run DELETE ALL, or do an unverified Full Sync
+   to try to recover orders. If an order is absent from the raw DB, inspect a
+   private backup and Shopee session/API import diagnostics separately.
+8. Date display in UI: 09/10/2569 21:30 (Thai Buddhist Era, 24 hour).
+   Date-only remains date-only, no fake time. DB/API/CSV machine fields stay ISO.
+
+See RELEASE-NOTES-v2.5.7.md. The CI fixtures do not constitute acceptance
+of the real Shopee private Buyer API or historical production database.

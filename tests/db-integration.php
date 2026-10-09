@@ -168,10 +168,27 @@ try {
         'Repair queue is scoped to account with pending records');
 
     $reconcile=reconcile_account_scan($db,'CI-A','different-scan');
-    test_check($reconcile['stale']===1 && row_for($db,'CI-A1')['validation_state']==='not_seen_full_scan',
-        'Reconciliation marks only stale orders in requested account');
+    test_check($reconcile['stale']===1 && row_for($db,'CI-A1')['validation_state']==='verified_v200',
+        'Reconciliation counts stale safely without hiding or downgrading a valid purchase');
     test_check(row_for($db,'CI-B1')['validation_state']==='verified_v200',
         'Reconciliation does not change another account');
+    // Historical PAN releases downgraded valid records to not_seen_full_scan.
+    // The current code must surface them without silently rewriting raw history.
+    $db->exec("UPDATE orders SET validation_state='not_seen_full_scan' WHERE order_no='CI-A1'");
+    test_check(pan_verified_purchase_count($db)===2 && pan_account_verified_purchase_count($db,'CI-A')===1,
+        'previously imported orders marked not_seen_full_scan are visible in account/PAN counts');
+    $visible=pan_purchase_visibility_sql('o');
+    $cnt=(int)$db->query("SELECT COUNT(*) FROM orders o WHERE $visible AND o.purchase_state='purchase'")->fetchColumn();
+    test_check($cnt===2, 'dashboard/analytics can include historically hidden purchases');
+    $byMonth=pan_order_placed_sql('o');
+    $selected=(int)$db->query("SELECT COUNT(*) FROM orders o WHERE substr($byMonth,1,7)='2026-10'")->fetchColumn();
+    test_check($selected===1,'strict purchase-date filtering excludes unknown-date rows but preserves valid ones');
+    $nullCount=(int)$db->query("SELECT COUNT(*) FROM orders o WHERE $byMonth IS NULL")->fetchColumn();
+    test_check($nullCount===1,'unknown-date orders can be found separately without inventing an October purchase');
+    $orderExpr=pan_order_sort_sql('o');
+    $found=$db->query("SELECT order_no FROM orders o ORDER BY $orderExpr DESC,o.id DESC LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
+    test_check(count($found)===2 && in_array('CI-B1',$found,true),'unknown-date order remains sortable via database observation timestamp');
+
     $del=delete_cancelled_orders($db,'CI-B',['CI-B1']);
     test_check($del['deleted']===1 && row_for($db,'CI-B1')===null,
         'Own-account cancellation deletes order');

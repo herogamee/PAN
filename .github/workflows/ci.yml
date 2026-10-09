@@ -19,6 +19,8 @@ jobs:
         run: |
           php tests/order-timeline.php
           php tests/order-ui.php
+      - name: Historical order visibility, October date filtering and safe observation sort (SQLite)
+        run: python3 tests/visibility-sql.py
       - name: Legacy payment-method raw-value regression
         run: php tests/payment-method.php
       - name: Retired Buyer payment/carrier/delivery Repair queue policy regression

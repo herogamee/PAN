@@ -259,7 +259,7 @@ function db_item_upsert_sql(PDO $db): string {
 }
 
 function pan_verified_purchase_count(PDO $db): int {
-    return (int)$db->query("SELECT COUNT(*) FROM orders WHERE COALESCE(validation_state,'legacy') IN ('verified_v045','verified_v049','verified_v049_date_unknown','verified_v200') AND COALESCE(purchase_state,'review')='purchase' AND COALESCE(list_type,0)<>4")->fetchColumn();
+    return (int)$db->query("SELECT COUNT(*) FROM orders WHERE ".pan_purchase_visibility_sql()." AND COALESCE(purchase_state,'review')='purchase' AND COALESCE(list_type,0)<>4")->fetchColumn();
 }
 
 function pan_total_order_count(PDO $db): int {
@@ -267,7 +267,7 @@ function pan_total_order_count(PDO $db): int {
 }
 
 function pan_account_verified_purchase_count(PDO $db,string $accountId): int {
-    $st=$db->prepare("SELECT COUNT(*) FROM orders WHERE source_account_id=:aid AND validation_state IN ('verified_v045','verified_v049','verified_v049_date_unknown','verified_v200') AND purchase_state='purchase' AND COALESCE(list_type,0)<>4");$st->execute([':aid'=>$accountId]);return (int)$st->fetchColumn();
+    $st=$db->prepare("SELECT COUNT(*) FROM orders WHERE source_account_id=:aid AND ".pan_purchase_visibility_sql()." AND purchase_state='purchase' AND COALESCE(list_type,0)<>4");$st->execute([':aid'=>$accountId]);return (int)$st->fetchColumn();
 }
 
 /**
@@ -437,6 +437,9 @@ function delete_cancelled_orders(PDO $db,string $accountId,array $orderNos):arra
 }
 function reconcile_account_scan(PDO $db,string $accountId,string $scanId):array {
     ensure_schema_v200($db);if($accountId===''||$scanId==='')throw new RuntimeException('account_id/scan_id required');
-    $st=$db->prepare("UPDATE orders SET validation_state='not_seen_full_scan',updated_at=CURRENT_TIMESTAMP WHERE source_account_id=:aid AND COALESCE(list_type,0)<>4 AND COALESCE(last_scan_id,'')<>:sid");$st->execute([':aid'=>$accountId,':sid'=>$scanId]);$stale=$st->rowCount();
+    // Full Sync may be incomplete or Shopee may omit a status bucket. A record
+    // not seen on this pass is NOT an invalid order: never overwrite its
+    // validation_state (which would hide it from dashboards/analytics).
+    $st=$db->prepare("SELECT COUNT(*) FROM orders WHERE source_account_id=:aid AND COALESCE(list_type,0)<>4 AND COALESCE(last_scan_id,'')<>:sid");$st->execute([':aid'=>$accountId,':sid'=>$scanId]);$stale=(int)$st->fetchColumn();
     $st=$db->prepare('SELECT COUNT(*) FROM orders WHERE source_account_id=:aid AND last_scan_id=:sid');$st->execute([':aid'=>$accountId,':sid'=>$scanId]);return ['seen'=>(int)$st->fetchColumn(),'stale'=>$stale];
 }

@@ -1,4 +1,4 @@
-# PAN 2.5.6 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.7 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -26,6 +26,16 @@
 - เวอร์ชัน **PAN Core 2.5.6 + Shopee Connector 2.4.13**: [Release Notes](RELEASE-NOTES-v2.5.6.md) · [Acceptance policy](docs/PAN-v2.5.6-DELIVERY-FIELD-RETIREMENT.md) · [Phase 2](https://github.com/herogamee/PAN/issues/2)
 
 **ยังไม่ผ่าน Production Acceptance**: ต้องลองอัปเกรดกับสำเนาฐานข้อมูลจริงใน staging และทดสอบ Shopee ที่ได้รับอนุญาต; synthetic CI ไม่ยืนยันความพร้อมของ Buyer API หรือข้อมูลวันรับพัสดุจริง
+
+## PAN 2.5.7 — กู้การมองเห็นออเดอร์และวันที่ไทย
+
+- แก้ Full Sync Reconcile ไม่ให้เปลี่ยนสถานะยืนยันออเดอร์เก่าจนหายจาก Dashboard/รายงานเมื่อสแกนไม่พบ
+- ออเดอร์เก่าที่เคยถูกตั้ง `not_seen_full_scan` ดูได้ในหน้าคำสั่งซื้อ พร้อมป้ายเตือน ไม่ลบ/เปลี่ยนข้อมูลดิบ
+- เพิ่มทางลัด **ไม่พบใน Full Sync / ไม่ทราบวันที่สั่ง / PAN พบหรือซิงก์เดือนนี้**; วันซิงก์ไม่ใช่วันสั่งจริง
+- แสดง **09/10/2569 21:30** (วว/ดด/ปปปป พ.ศ., เวลาไทย 24 ชม.) หรือวันที่อย่างเดียวหาก Shopee ไม่มีเวลา
+- [Release Notes](RELEASE-NOTES-v2.5.7.md) · [ตรวจรับ](docs/PAN-v2.5.7-ORDER-VISIBILITY-ACCEPTANCE.md)
+
+**สำคัญ:** การแก้การมองเห็นไม่ใช่การกู้แถวที่ถูกลบจากฐานแล้ว และยังต้องตรวจเทียบกับฐานจริงก่อนประกาศ Production Accepted
 
 Shopee เป็นเพียง Connector ตัวแรกของ PAN ไม่ใช่ชื่อของระบบหลัก เพื่อให้ในอนาคตเพิ่ม Lazada, TikTok Shop, LINE Shopping หรือ Marketplace อื่นได้โดยไม่ต้องเปลี่ยนชื่อโปรเจกต์อีก
 
@@ -320,7 +330,7 @@ PAN
 
 ---
 
-Version: **PAN 2.5.6**  
+Version: **PAN 2.5.7**  
 Character: **น้องแพน**  
 Role: **Marketplace & Commerce Assistant**  
 Brand: **itoom.work**

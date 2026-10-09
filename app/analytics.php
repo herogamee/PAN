@@ -18,9 +18,8 @@ function analytics_status_th(string $status,int|string|null $listType=null): str
 }
 function analytics_snapshot(PDO $db): array {
     ensure_schema_v200($db);
-    $verified="('verified_v045','verified_v049','verified_v049_date_unknown','verified_v200')";
-    $purchase="COALESCE(validation_state,'legacy') IN $verified AND COALESCE(purchase_state,'review')='purchase' AND COALESCE(list_type,0)<>4";
-    $purchaseO="COALESCE(o.validation_state,'legacy') IN $verified AND COALESCE(o.purchase_state,'review')='purchase' AND COALESCE(o.list_type,0)<>4";
+    $purchase=pan_purchase_visibility_sql()." AND COALESCE(purchase_state,'review')='purchase' AND COALESCE(list_type,0)<>4";
+    $purchaseO=pan_purchase_visibility_sql('o')." AND COALESCE(o.purchase_state,'review')='purchase' AND COALESCE(o.list_type,0)<>4";
     $dateExpr='substr('.pan_order_placed_sql().',1,10)';
     $dateExprO='substr('.pan_order_placed_sql('o').',1,10)';
 
@@ -116,7 +115,7 @@ function analytics_copy_summary(array $a): string {
     $c=$a['core']??[];
     $lines=[
       'PAN — น้องแพน · สรุปข้อมูล',
-      'ช่วงข้อมูล: '.(($c['first_order_date']??'')?:'ไม่ทราบ').' ถึง '.(($c['last_order_date']??'')?:'ไม่ทราบ'),
+      'ช่วงข้อมูล: '.(pan_thai_date_display((string)($c['first_order_date']??''))?:'ไม่ทราบ').' ถึง '.(pan_thai_date_display((string)($c['last_order_date']??''))?:'ไม่ทราบ'),
       'Order ทั้งหมด: '.number_format((int)($c['orders']??0)),
       'Order สำเร็จ: '.number_format((int)($c['completed_orders']??0)),
       'จำนวนชิ้น: '.number_format((int)($c['items_qty']??0)),
