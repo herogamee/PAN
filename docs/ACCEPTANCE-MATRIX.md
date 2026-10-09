@@ -1,6 +1,6 @@
 # PAN — Acceptance & Test Matrix
 
-> อัปเดต 2026-10-09 · baseline: **PAN 2.5.8 / Shopee Connector 2.4.13** · [Roadmap](../ROADMAP.md).
+> อัปเดต 2026-10-09 · baseline: **PAN 2.5.9 / Shopee Connector 2.4.14** · [Roadmap](../ROADMAP.md).
 >
 > **อย่าสับสน**: automated CI ผ่าน หมายถึง source/tests ที่รันได้ผ่านเท่านั้น **ไม่ได้** หมายถึงผ่าน Shopee live API, browser login, ข้อมูลร้านจริง หรือ production DB.
 
@@ -21,6 +21,9 @@
 | AUTO-13 | Thai Buddhist DD/MM/YYYY HH:mm 24-hour display; date-only preserved and timezone offsets tested | **PASS (CI)** | [v2.5.7 CI](https://github.com/herogamee/PAN/actions/runs/37947009304) · [timeline tests](../tests/order-timeline.php) · [UI regressions](../tests/order-ui.php) |
 | AUTO-14 | Orders expand/collapse by row/Order number; shop links still navigate | **PASS (PHP + JS CI)** | [CI](https://github.com/herogamee/PAN/actions/runs/37962361472) · [Render tests](../tests/orders-panel-render.php) · [JS tests](../tests/orders-browser.test.mjs) |
 | AUTO-15 | Paginated multi-item Order isolation in SQLite/MariaDB | **PASS (synthetic PDO CI)** | [CI](https://github.com/herogamee/PAN/actions/runs/37962361472) · [DB tests](../tests/db-integration.php) |
+| AUTO-16 | Three variants and five purchased units remain distinct; no silent default quantity 1 | **PASS (synthetic Node CI)** | [CI](https://github.com/herogamee/PAN/actions/runs/37965956961) · [Connector quantity fixtures](../connectors/shopee-extension/test/quantity.test.mjs) |
+| AUTO-17 | Correct historical synthetic 2-line/2-unit state to 3-line/5-unit state transactionally; duplicate/invalid quantity rejects whole page | **PASS (synthetic PDO SQLite/MariaDB CI)** | [CI](https://github.com/herogamee/PAN/actions/runs/37965956961) · [DB integrations](../tests/db-integration.php) |
+| AUTO-18 | Targeted per-Order import requires account scope, manually verified expected count and preserves Full/Recent checkpoints | **PASS (synthetic Node CI)** | [CI](https://github.com/herogamee/PAN/actions/runs/37965956961) · [Quantity fixtures](../connectors/shopee-extension/test/quantity.test.mjs) |
 | AUTO-04 | Local PHP PDO SQLite/MySQL integration on production-like database | **NOT VERIFIED** | [Local build limitations](LOCAL-VALIDATION-v2.5.1.txt) |
 | AUTO-05 | Live Shopee buyer API / payment/logistics/category via a real user session | **NOT VERIFIED** | [Handoff limitations](PAN-v2.5.1-HANDOFF.md) |
 
@@ -44,6 +47,8 @@
 | PAN-P2-05 | [#2](https://github.com/herogamee/PAN/issues/2) | Missing Buyer payment/carrier/delivered-only flags do not force Repair or false pending count | Old partial skipped; uninspected/error/other missing fields retryable | **PASS synthetic CI**, staging pending |
 | PAN-P2-06 | [#2](https://github.com/herogamee/PAN/issues/2) | Historical raw delivered data not deleted or rewritten by empty detail response | Verify source keeps provenance and base-to-patch parity; staging restore of historical records pending | **PASS synthetic/source CI**, staging pending |
 | PAN-P3-03 | [#3](https://github.com/herogamee/PAN/issues/3) | Expand Order to show saved products, variants and prices | All lines grouped under selected Order; keyboard/touch and links usable; no new API | **PASS CI; real staging PENDING** |
+| PAN-P3-04 | [#3](https://github.com/herogamee/PAN/issues/3) | Purchase quantity and variant identity | Variant-without-model-ID x2 + qty3 SKU yields 3 lines/5 units, zero/missing/conflict fails closed | **PASS synthetic CI; real account pending** |
+| PAN-P3-05 | [#3](https://github.com/herogamee/PAN/issues/3) | Targeted recheck of one Order without touching other orders | Confirm count from private Shopee UI; API matches before import; account/checkpoint unchanged; otherwise no-write | **PASS synthetic CI; real account pending** |
 | PAN-P3-01 | [#3](https://github.com/herogamee/PAN/issues/3) | Product/Shop/Category filters, sorts, KPIs | Count/shop/category/spend/price history match order fixture/staging DB | Pending |
 | PAN-P3-02 | [#3](https://github.com/herogamee/PAN/issues/3) | Manual merge/split + variant/unit correctness | No false auto-merge, reversible change and immutable source order history | Not implemented |
 | PAN-P4-01 | [#4](https://github.com/herogamee/PAN/issues/4) | Server Connector Windows XAMPP3 + Ubuntu | Profile persists across restart; authorized session sync/repair succeed | Pending |

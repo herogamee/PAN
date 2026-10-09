@@ -1,8 +1,16 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.8 + Shopee Connector v2.4.13** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.9 + Shopee Connector v2.4.14** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
+
+## PAN v2.5.9 — จำนวนชิ้นและตัวเลือกสินค้าไม่ตรง
+
+- **บั๊กที่ยืนยันจาก Source:** ตัวอ่านจำนวน `amount ?? quantity ?? 1` สมมติเป็น 1 เมื่อไม่มีฟิลด์; `product_key` เดิมชนกันได้เมื่อสินค้าเดียวกันมีหลายตัวเลือกที่ไม่มี `model_id` จนฐานข้อมูลเขียนทับกัน
+- **แก้แล้ว:** อ่านจำนวนเต็มจากฟิลด์ที่ระบุชัด, แยก variant ด้วย key คงที่, รวมจำนวนจากกลุ่มสินค้าเดียวกันที่ยืนยันเป็น SKU เดียวกัน, หากข้อมูลขาดหรือขัดแย้งให้หยุดโดยไม่แก้ checkpoint หรือฐานข้อมูล
+- **เครื่องมือตรวจเฉพาะ Order:** Shopee Connector 2.4.14 ให้ระบุเลขออเดอร์และจำนวนชิ้นที่ผู้ใช้ตรวจจาก Shopee; อัปเดตเฉพาะเมื่อ API ให้ข้อมูลครบตรงกับจำนวนที่ระบุและบัญชี Shopee ถูกต้อง **ไม่มีการแก้ข้อมูลเก่าอัตโนมัติ**
+- **หลักฐาน:** [Source commit](https://github.com/herogamee/PAN/commit/e97fe24b864f3b74bf64ef7c9d394b355a6bc0a4) · [CI 5 งานผ่าน](https://github.com/herogamee/PAN/actions/runs/37965956961) · [Acceptance](docs/PAN-v2.5.9-QUANTITY-ACCEPTANCE.md) · [Release Notes](RELEASE-NOTES-v2.5.9.md)
+- **รอตรวจจริง:** สถานะการแก้ไขคำสั่งซื้อที่มีจำนวนผิดของผู้ใช้ยัง **PENDING** จนกว่า Buyer API ของบัญชีนั้นยืนยันข้อมูลสินค้าแต่ละตัวเลือกและจำนวนได้จริง; ห้ามกรอกเลขออเดอร์หรือ raw JSON จริงใน Public GitHub
 
 ## PAN v2.5.8 — ขยายรายการสินค้าของแต่ละคำสั่งซื้อ
 
@@ -40,7 +48,7 @@
 - [GitHub Issues — เปิดอยู่](https://github.com/herogamee/PAN/issues)
 - [Acceptance & Test Matrix](docs/ACCEPTANCE-MATRIX.md) — Test case, เกณฑ์ผ่าน, ผลจริง และหลักฐาน
 - [Staging Acceptance Runbook](docs/STAGING-ACCEPTANCE.md) — ขั้นตอนทดสอบ XAMPP3/Ubuntu และเก็บผลอย่างปลอดภัย
-- [PAN 2.5.5 Release Notes](RELEASE-NOTES-v2.5.5.md) — ขอบเขต release ล่าสุดและข้อจำกัด
+- [PAN 2.5.9 Release Notes](RELEASE-NOTES-v2.5.9.md) — ขอบเขต release ล่าสุดและข้อจำกัด
 - [GitHub CI](.github/workflows/ci.yml) — PHP lint, Shopee Extension regression, Server Connector regression
 
 ## สรุป 7 เฟส

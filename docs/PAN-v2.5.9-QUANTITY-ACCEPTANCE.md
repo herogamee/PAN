@@ -18,7 +18,7 @@
 ## LIVE acceptance gate — NOT RUN
 
 1. Back up live database/config and restore a private staging copy first.
-2. While signed into the intended authorized Shopee Buyer account, compare **order 244733082232537** in Shopee itself (pants two variants x1; rod x3; expected total 5) against the actual authenticated detail/list response.
+2. While signed into the intended authorized Shopee Buyer account, compare **order [REDACTED-ORDER-ID]** in Shopee itself (pants two variants x1; rod x3; expected total 5) against the actual authenticated detail/list response.
 3. Try Connector **ตรวจจำนวนสินค้าเฉพาะ Order** with manually confirmed 5 units. If API says 2, stop and record a **sanitized** schema/field summary only. Don't export cookies, names/addresses or raw order body.
 4. If API says 5 and targeted import succeeds, verify PAN now shows three separate variants and **5 total pieces**. Check that other orders, totals, earlier item snapshots and the Full/Recent checkpoint remain unchanged.
 5. Test accounts with distinct shop/item IDs, return/refund status, optional `product_count` semantics, and API schema changes. Do not force reconciliation on ambiguous shapes.

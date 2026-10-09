@@ -27,7 +27,7 @@ A synthetic fixture reproduces two saved rows / two units from three actual sour
 - Synthetic legacy-normalizer reproduction: 3 source item rows / expected 5 pieces → old DB-style overwrite yields 2 rows / 2 pieces.
 - Connector regressions include variant identity, count provenance, same-SKU multi-group aggregation, fail-closed missing/mismatched quantity, safe one-order refresh, account-switch and no-reset checkpoint.
 - PDO SQLite/MariaDB tests include original wrong 2-unit record, safe import into 3 lines / 5 units and idempotent replay; reject duplicate SKU/missing quantity before database mutation.
-- **Live Shopee acceptance is pending.** Exact order 244733082232537 has not been fetched and cannot be claimed fixed until authorized recheck.
+- **Live Shopee acceptance is pending.** Exact order [REDACTED-ORDER-ID] has not been fetched and cannot be claimed fixed until authorized recheck.
 
 ## Install and targeted recovery
 

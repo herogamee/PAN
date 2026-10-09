@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.8 + Shopee Connector v2.4.13**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.9 + Shopee Connector v2.4.14**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.8`, Extension manifest เป็น `2.4.13`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.9`, Extension manifest เป็น `2.4.14`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -141,3 +141,16 @@ Login v2.5.3 requires the login page's new CSRF hidden field; refresh old login 
 - [ ] กดขยายไม่ควรสร้างคำขอไป Shopee API เพิ่ม และไม่เปลี่ยนแปลงฐานข้อมูล
 
 [ผล CI v2.5.8](https://github.com/herogamee/PAN/actions/runs/37962361472) · [เกณฑ์ตรวจรับ](PAN-v2.5.8-ORDER-EXPANSION.md). Production acceptance ยังไม่ได้ทดสอบ
+
+## 11. จำนวนชิ้นและตัวเลือกสินค้าต่อคำสั่งซื้อ (PAN 2.5.9)
+
+- [ ] สำรองฐานข้อมูล/ไฟล์ runtime อย่างปลอดภัย แล้วทดสอบอัปเกรดจาก PAN 2.5.8 บน staging ก่อน; ห้าม Full Sync ก่อนตรวจสอบจำนวนและบัญชี
+- [ ] ติดตั้ง Core 2.5.9 และ Reload Extension 2.4.14; เปิดหน้า Shopee ของบัญชีที่ได้รับอนุญาต
+- [ ] ใน Shopee UI ตรวจด้วยตนเองว่าสั่งสินค้าแต่ละตัวเลือกจำนวนเท่าไร รวมเป็นกี่ชิ้น (เช่น สินค้าต่างตัวเลือก x1+x1 และอีก SKU x3 = 5 ชิ้น)
+- [ ] ใน Extension หัวข้อ **ตรวจจำนวนสินค้าเฉพาะ Order** กรอกเลข Order แบบส่วนตัว + จำนวนที่ตรวจเอง แล้วกด **ตรวจและอัปเดตเฉพาะออเดอร์นี้**
+- [ ] หาก Buyer API ยืนยัน 3 บรรทัด / 5 ชิ้น และตรงจำนวนที่กรอก ให้ตรวจหน้ารายการว่า 3 บรรทัดและจำนวนรวมถูกต้อง; ไม่มีการแก้ไข Order อื่น
+- [ ] หาก API ให้จำนวนไม่ครบ/ขัดแย้ง หรือบัญชีไม่ตรง ต้อง **ไม่เขียนข้อมูลและไม่เลื่อน Full/Recent checkpoint**
+- [ ] ทดสอบหลาย variant ไม่มี model_id, การซ้ำ SKU จากหลายกลุ่ม, quantity ไม่มีค่า/ศูนย์/ค่าขัดแย้ง และจำนวนที่ไม่ตรงกับผู้ใช้
+- [ ] เก็บหลักฐานเพียงผลรวม/ประเภทฟิลด์ที่ปกปิดแล้ว ห้ามใส่เลข Order จริง รูป buyer ID, cookies, shipping addresses หรือ payload JSON ดิบลง Public GitHub
+
+**Evidence:** [Five-job CI](https://github.com/herogamee/PAN/actions/runs/37965956961) · [Quantity acceptance](PAN-v2.5.9-QUANTITY-ACCEPTANCE.md). Live Buyer API validation is **PENDING**.
