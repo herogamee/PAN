@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.6 + Shopee Connector v2.4.13**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.7 + Shopee Connector v2.4.13**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.6`, Extension manifest เป็น `2.4.13`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.7`, Extension manifest เป็น `2.4.13`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -115,3 +115,18 @@ Login v2.5.3 requires the login page's new CSRF hidden field; refresh old login 
 - [ ] ทดสอบการโหลด Connector 2.4.13, PHP 2.5.6 และตรวจ log เฉพาะที่ปกปิดข้อมูลผู้ใช้แล้ว
 
 **หลักฐานอัตโนมัติ:** [PAN v2.5.6 CI](https://github.com/herogamee/PAN/actions/runs/37942186241) · [Retirement policy](PAN-v2.5.6-DELIVERY-FIELD-RETIREMENT.md). **Live Shopee / historical production restore: ยังไม่ได้ตรวจรับ**.
+
+## 9. แก้รายการสั่งซื้อเดือนล่าสุดไม่แสดง (PAN 2.5.7)
+
+ก่อนเปลี่ยน Production **สำรองฐานข้อมูลพร้อม WAL/config** แล้วทดสอบกับสำเนาบน staging อย่างเดียว:
+
+- [ ] จดจำนวนคำสั่งซื้อใน DB และตาม `validation_state` / `purchase_state` แบบ **counts only** ก่อนอัปเกรด
+- [ ] ตรวจ RAW rows ที่ถูกทำเครื่องหมาย `not_seen_full_scan` และแต่ละบัญชีในสำเนาฐาน; อย่าเปลี่ยนสถานะ/ลบข้อมูลตามที่คิดเอง
+- [ ] หลังวาง Core 2.5.7 เปิด Orders แบบ **ไม่มีตัวกรอง**; กดปุ่ม “เคยไม่พบใน Full Sync”, “ไม่ทราบวันที่สั่งซื้อ”, “PAN พบ/ซิงก์เดือนนี้” และเทียบจำนวนกับ DB
+- [ ] หมวด “PAN พบเดือนนี้” เป็น **เดือนที่ PAN พบออเดอร์ ไม่ใช่เดือนที่ซื้อ**; ห้ามนับรายการที่ไม่มีวันที่ยืนยันเป็นยอดซื้อเดือนนั้น
+- [ ] ออเดอร์ที่ยังอยู่ใน DB จากการสแกนเก่าต้องไม่ถูกลด `validation_state` หลัง Full Sync ปัจจุบัน; แต่ **ห้ามเริ่ม Full Sync จนกว่า** สรุปจำนวนก่อน/หลังและยืนยันบัญชีถูกต้อง
+- [ ] ตัวอย่างวันที่จาก Shopee จริง: วันที่/เวลา ISO เป็น `09/10/2569 21:30` เมื่อมีเวลาจริง; แค่วันที่เป็น `09/10/2569` ไม่เติมเวลาหลอก; timestamp UTC/Z ต้องแปลงเวลาไทยให้ถูก
+- [ ] กราฟรายเดือนแสดงเฉพาะออเดอร์ที่มีวันที่สั่งซื้อจริง; list type 3/7/8 รวมออเดอร์ที่ยังจัดส่ง; รายการวันที่ไม่ทราบอยู่ในหมวดแยก
+- [ ] หากไม่พบรายการในฐานข้อมูลจริงเลย ให้หยุดแก้ UI และตรวจระบบ Collector, cancellation และ private backups; UI ไม่สามารถสร้างข้อมูลที่ถูกลบจริงกลับมาได้
+
+อ่าน [Incident / Acceptance Details](PAN-v2.5.7-ORDER-VISIBILITY-ACCEPTANCE.md) · [Five-job CI success](https://github.com/herogamee/PAN/actions/runs/37947009304). Production acceptance remains **PENDING**.

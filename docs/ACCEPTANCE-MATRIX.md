@@ -1,6 +1,6 @@
 # PAN — Acceptance & Test Matrix
 
-> อัปเดต 2026-10-09 · baseline: **PAN 2.5.6 / Shopee Connector 2.4.13** · [Roadmap](../ROADMAP.md).
+> อัปเดต 2026-10-09 · baseline: **PAN 2.5.7 / Shopee Connector 2.4.13** · [Roadmap](../ROADMAP.md).
 >
 > **อย่าสับสน**: automated CI ผ่าน หมายถึง source/tests ที่รันได้ผ่านเท่านั้น **ไม่ได้** หมายถึงผ่าน Shopee live API, browser login, ข้อมูลร้านจริง หรือ production DB.
 
@@ -17,6 +17,8 @@
 | AUTO-09 | Legacy missing-carrier-only Repair excluded; PDO SQLite/MariaDB integration, account counts | **PASS (synthetic CI)** | [run](https://github.com/herogamee/PAN/actions/runs/37938489873) · [Repair policy tests](../tests/carrier-repair.php) · [DB integration](../tests/db-integration.php) |
 | AUTO-10 | Received-delivery date removed from Orders + Analytics; order-created dates and status retained | **PASS (CI)** | [PAN v2.5.6 CI](https://github.com/herogamee/PAN/actions/runs/37942186241) · [UI regressions](../tests/order-ui.php) |
 | AUTO-11 | Delivery-only old partial flags skipped by Repair and status counts, errors still retried | **PASS (synthetic SQLite/MariaDB CI)** | [PAN v2.5.6 CI](https://github.com/herogamee/PAN/actions/runs/37942186241) · [DB regressions](../tests/db-integration.php) |
+| AUTO-12 | Full Sync reconcile preserves validation state; historical not-seen orders visible and accounted for | **PASS (synthetic SQLite/MariaDB CI)** | [v2.5.7 CI](https://github.com/herogamee/PAN/actions/runs/37947009304) · [PHP DB test](../tests/db-integration.php) · [visibility SQL](../tests/visibility-sql.py) |
+| AUTO-13 | Thai Buddhist DD/MM/YYYY HH:mm 24-hour display; date-only preserved and timezone offsets tested | **PASS (CI)** | [v2.5.7 CI](https://github.com/herogamee/PAN/actions/runs/37947009304) · [timeline tests](../tests/order-timeline.php) · [UI regressions](../tests/order-ui.php) |
 | AUTO-04 | Local PHP PDO SQLite/MySQL integration on production-like database | **NOT VERIFIED** | [Local build limitations](LOCAL-VALIDATION-v2.5.1.txt) |
 | AUTO-05 | Live Shopee buyer API / payment/logistics/category via a real user session | **NOT VERIFIED** | [Handoff limitations](PAN-v2.5.1-HANDOFF.md) |
 
@@ -24,6 +26,8 @@
 
 | ID | Issue | Scenario | วิธีพิสูจน์ / เงื่อนไขผ่าน | ผลจริง |
 |---|---|---|---|---|
+| PAN-P1-10 | [#1](https://github.com/herogamee/PAN/issues/1) | Actual October order visibility before/after 2.5.7 upgrade | Verify private copy raw rows vs Orders (normal/stale/undated/PAN seen this month) and Shopee UI; distinguish physically absent vs filtered | **PENDING staging/user DB** |
+| PAN-P1-11 | [#1](https://github.com/herogamee/PAN/issues/1) | Thailand DD/MM/YYYY Buddhist Era and 24-hour timestamps | Sample sourced dates with timezone and date-only; report exact matches with Shopee; machine storage still Gregorian | **PASS synthetic CI; live PENDING** |
 | PAN-P1-01 | [#1](https://github.com/herogamee/PAN/issues/1) | Staging backup/restore/upgrade 2.5.0→2.5.1 | Snapshot ก่อนอัปเกรด, rollback แล้วนับ rows/relationships ตรง | Pending |
 | PAN-P1-02 | [#1](https://github.com/herogamee/PAN/issues/1) | SQLite/MySQL real PHP PDO transaction | Import/reconcile rollback and repeat on both drivers; FK/count correct | Pending |
 | PAN-P1-03 | [#1](https://github.com/herogamee/PAN/issues/1) | Recent/Full Sync with authorized logged-in account | Count unique vs PAN, no duplicate, correct account, resume checkpoint intact | Pending |

@@ -1,8 +1,16 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.6 + Shopee Connector v2.4.13** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.7 + Shopee Connector v2.4.13** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
+
+## PAN v2.5.7 — คำสั่งซื้อเดือนล่าสุดไม่แสดง / Thai Buddhist Date
+
+- **ต้นเหตุที่พบใน Source:** Full Sync เดิมเปลี่ยน `validation_state` ของออเดอร์ที่ไม่พบล่าสุดเป็น `not_seen_full_scan`; หน้าสรุปแสดงเฉพาะ `verified_*` จึงซ่อนออเดอร์ที่ยังมีอยู่ใน DB. เงื่อนไขวันที่แบบ strict ทำให้ออเดอร์ที่ไม่มีวันสร้างจริงไม่เข้ากรองเดือน แม้ PAN เคยพบในเดือนนั้น
+- **แก้แล้ว:** Reconcile อ่านเพื่อ **นับ** แต่ไม่เปลี่ยน verification state ของออเดอร์เก่า, คืนการมองเห็นออเดอร์ที่ถูกซ่อน (เฉพาะมี source_account_id), เพิ่มลิงก์ **เคยไม่พบใน Full Sync / ไม่ทราบวันที่สั่งซื้อ / PAN พบหรือซิงก์เดือนนี้** (วันที่ PAN พบ ไม่ใช่วันสั่งซื้อ)
+- **วันที่:** UI `วว/ดด/ปปปป พ.ศ. HH:mm` เวลาไทย 24 ชั่วโมง (เมื่อมี timestamp จริง), timestamp มี `Z`/offset แปลง Asia/Bangkok, date-only ยังคง date-only; backend SQL/export เป็น Gregorian ตามเดิม
+- **Source/CI:** [Commit PAN 2.5.7](https://github.com/herogamee/PAN/commit/ed6c8815a8a6927301253dee4a1bb88fccd7d1b1) · [CI 5 งานผ่าน](https://github.com/herogamee/PAN/actions/runs/37947009304) · [Release Notes](RELEASE-NOTES-v2.5.7.md) · [Order Visibility acceptance](docs/PAN-v2.5.7-ORDER-VISIBILITY-ACCEPTANCE.md)
+- **ยังไม่ผ่านตรวจรับระบบจริง:** ต้องเทียบจำนวน order/สถานะ/ข้อมูลสำรองบนเครื่องผู้ใช้และ Shopee ที่ล็อกอินจริง; **ออเดอร์ที่ถูกลบออกจากฐานข้อมูลจริงจะไม่สามารถคืนได้ด้วยการแก้ UI เพียงอย่างเดียว**
 
 ## PAN v2.5.6 — ถอดวันรับพัสดุที่ Buyer API ยังยืนยันไม่ได้
 
