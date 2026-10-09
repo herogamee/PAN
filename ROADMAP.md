@@ -1,8 +1,16 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.7 + Shopee Connector v2.4.13** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.8 + Shopee Connector v2.4.13** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
+
+## PAN v2.5.8 — ขยายรายการสินค้าของแต่ละคำสั่งซื้อ
+
+- **Source แล้ว:** หน้า `page=orders` คลิกที่เลข Order หรือแถวเพื่อดูสินค้าใน Order นั้นพร้อมรูป ตัวเลือก จำนวน ราคา แล้วกดซ้ำยุบได้
+- **ประสิทธิภาพ:** ใช้ Query แบบอ่านอย่างเดียวครั้งเดียวเฉพาะ Order ID ที่ปรากฏในหน้าตัวกรอง/แบ่งหน้า ไม่เรียก Shopee API เพิ่มและไม่เปลี่ยนข้อมูลเก่า
+- **ความปลอดภัย:** ตรวจ HTTP(S) URL, escape HTML, ป้องกันการเปิดลิงก์อันตราย; ไม่มีข้อมูลสินค้าต้องบอกว่าระบบยังไม่เก็บ ไม่สมมติว่าไม่ได้ซื้อ
+- **ผลทดสอบ:** [GitHub CI 5 งานผ่าน](https://github.com/herogamee/PAN/actions/runs/37962361472) · [Source commit](https://github.com/herogamee/PAN/commit/cbe7c57d08da9e1f5f2f9e27f64aa98a80caf187) · [Release Notes](RELEASE-NOTES-v2.5.8.md) · [Acceptance](docs/PAN-v2.5.8-ORDER-EXPANSION.md)
+- **รอตรวจ Production:** เทียบกับข้อมูล Shopee ของเจ้าของบัญชีจริงบน staging แยกจากฐานข้อมูลใช้งาน
 
 ## PAN v2.5.7 — คำสั่งซื้อเดือนล่าสุดไม่แสดง / Thai Buddhist Date
 

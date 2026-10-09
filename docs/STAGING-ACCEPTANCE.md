@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.7 + Shopee Connector v2.4.13**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.8 + Shopee Connector v2.4.13**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.7`, Extension manifest เป็น `2.4.13`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.8`, Extension manifest เป็น `2.4.13`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -130,3 +130,14 @@ Login v2.5.3 requires the login page's new CSRF hidden field; refresh old login 
 - [ ] หากไม่พบรายการในฐานข้อมูลจริงเลย ให้หยุดแก้ UI และตรวจระบบ Collector, cancellation และ private backups; UI ไม่สามารถสร้างข้อมูลที่ถูกลบจริงกลับมาได้
 
 อ่าน [Incident / Acceptance Details](PAN-v2.5.7-ORDER-VISIBILITY-ACCEPTANCE.md) · [Five-job CI success](https://github.com/herogamee/PAN/actions/runs/37947009304). Production acceptance remains **PENDING**.
+
+## 10. ตรวจระบบขยายสินค้าใน Order (PAN 2.5.8)
+
+- [ ] หลังสำรองข้อมูล ให้เปิด `?page=orders` บน staging แล้วกดเลข Order/พื้นที่แถว ต้องขยาย/ยุบได้โดยไม่เปลี่ยนหน้า
+- [ ] ทดสอบออเดอร์ที่มีสินค้าเดียว หลายสินค้า หลายตัวเลือก และออเดอร์ที่ PAN ยังไม่เก็บสินค้า โดยเทียบข้อมูลกับ Shopee จริงแบบปกปิดตัวตน
+- [ ] ตรวจรูป ชื่อ/ตัวเลือก จำนวน ราคาต่อชิ้นและมูลค่ารายการ ข้อมูลต้นทางอาจต่างจากยอดจ่ายจริงเพราะคูปอง/ค่าจัดส่ง
+- [ ] คลิกลิงก์ร้านค้าต้องกรองร้านตามเดิม; ลิงก์สินค้าเปิดแท็บใหม่อย่างปลอดภัย
+- [ ] ตรวจตัวกรอง/แบ่งหน้า 10/50/200 Order และมือถือ ไม่แสดงสินค้าของ Order อื่น
+- [ ] กดขยายไม่ควรสร้างคำขอไป Shopee API เพิ่ม และไม่เปลี่ยนแปลงฐานข้อมูล
+
+[ผล CI v2.5.8](https://github.com/herogamee/PAN/actions/runs/37962361472) · [เกณฑ์ตรวจรับ](PAN-v2.5.8-ORDER-EXPANSION.md). Production acceptance ยังไม่ได้ทดสอบ
