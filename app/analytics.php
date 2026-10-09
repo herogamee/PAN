@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__.'/payment_method.php';
+require_once __DIR__.'/order_timeline.php';
 
 function analytics_scalar(PDO $db,string $sql,array $params=[]): float|int|string {
     $st=$db->prepare($sql);$st->execute($params);$v=$st->fetchColumn();return $v===false?0:$v;
@@ -21,8 +21,8 @@ function analytics_snapshot(PDO $db): array {
     $verified="('verified_v045','verified_v049','verified_v049_date_unknown','verified_v200')";
     $purchase="COALESCE(validation_state,'legacy') IN $verified AND COALESCE(purchase_state,'review')='purchase' AND COALESCE(list_type,0)<>4";
     $purchaseO="COALESCE(o.validation_state,'legacy') IN $verified AND COALESCE(o.purchase_state,'review')='purchase' AND COALESCE(o.list_type,0)<>4";
-    $dateExpr="COALESCE(NULLIF(substr(order_created_at,1,10),''),NULLIF(substr(order_date,1,10),''),NULLIF(substr(completed_at,1,10),''),NULLIF(substr(delivered_at,1,10),''))";
-    $dateExprO="COALESCE(NULLIF(substr(o.order_created_at,1,10),''),NULLIF(substr(o.order_date,1,10),''),NULLIF(substr(o.completed_at,1,10),''),NULLIF(substr(o.delivered_at,1,10),''))";
+    $dateExpr='substr('.pan_order_placed_sql().',1,10)';
+    $dateExprO='substr('.pan_order_placed_sql('o').',1,10)';
 
     $core=analytics_rows($db,"SELECT
       COUNT(*) orders,
@@ -70,9 +70,6 @@ function analytics_snapshot(PDO $db): array {
     $topProducts=analytics_rows($db,"SELECT i.product_key,MAX(i.product_name) product_name,MAX(i.variant_name) variant_name,MAX(i.image_url) image_url,COUNT(DISTINCT i.order_id) orders,COALESCE(SUM(i.quantity),0) qty,COALESCE(SUM($productSpendExpr),0) spent,COALESCE(AVG(CASE WHEN i.actual_unit_price>0 THEN i.actual_unit_price WHEN i.net_unit_price>0 THEN i.net_unit_price ELSE i.purchase_price END),0) avg_price FROM order_items i JOIN orders o ON o.id=i.order_id WHERE $purchaseO GROUP BY i.product_key ORDER BY spent DESC,qty DESC LIMIT 15");
     foreach($topProducts as &$r){$r['orders']=(int)$r['orders'];$r['qty']=(int)$r['qty'];$r['spent']=(float)$r['spent'];$r['avg_price']=(float)$r['avg_price'];}unset($r);
 
-    $payments=analytics_rows($db,"SELECT CASE WHEN TRIM(COALESCE(payment_method,''))='' THEN 'ไม่ทราบช่องทางการชำระเงิน' ELSE payment_method END label,COUNT(*) orders,COALESCE(SUM(total_paid),0) spent FROM orders WHERE $purchase GROUP BY label ORDER BY spent DESC,orders DESC LIMIT 12");
-    foreach($payments as &$r){$r['label']=pan_payment_method_label((string)$r['label']);$r['orders']=(int)$r['orders'];$r['spent']=(float)$r['spent'];}unset($r);
-
     $carriers=analytics_rows($db,"SELECT CASE WHEN TRIM(COALESCE(shipping_carrier,''))='' THEN 'ไม่ทราบ' ELSE shipping_carrier END label,COUNT(*) orders,COALESCE(SUM(total_paid),0) spent FROM orders WHERE $purchase GROUP BY label ORDER BY orders DESC,spent DESC LIMIT 12");
     foreach($carriers as &$r){$r['orders']=(int)$r['orders'];$r['spent']=(float)$r['spent'];}unset($r);
 
@@ -111,7 +108,6 @@ function analytics_snapshot(PDO $db): array {
       'yearly'=>$years,
       'top_shops'=>$topShops,
       'top_products'=>$topProducts,
-      'payment_methods'=>$payments,
       'carriers'=>$carriers,
       'accounts'=>$accounts,
       'weekdays'=>$weekdays,
@@ -157,7 +153,7 @@ function analytics_prompt_context(array $a): string {
         'orders'=>(int)($c['orders']??0),'completed_orders'=>(int)($c['completed_orders']??0),'items'=>(int)($c['items_qty']??0),'products'=>(int)($c['products']??0),'shops'=>(int)($c['shops']??0),'accounts'=>(int)($c['accounts']??0),
         'total_paid'=>(float)($c['total_paid']??0),'avg_order'=>(float)($c['avg_order']??0),'discount_total'=>(float)($c['discount_total']??0),'shipping_fee'=>(float)($c['shipping_fee']??0),'repair_pct'=>(float)($c['repair_pct']??0)
       ],
-      'top_shops'=>$topShops,'top_products'=>$topProducts,'last_12_months'=>$months,'status'=>$a['status']??[],'payment_methods'=>$a['payment_methods']??[]
+      'top_shops'=>$topShops,'top_products'=>$topProducts,'last_12_months'=>$months,'status'=>$a['status']??[]
     ];
     return "ใช้ข้อมูล PAN — น้องแพน ด้านล่างนี้เป็นข้อมูลจริงในการออกแบบภาพ/อินโฟกราฟิก/รายงาน ห้ามแต่งตัวเลขเพิ่ม หากต้องย่อให้รักษาค่าหลักไว้ และใช้รูปแบบเงินบาท\n\n".json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT);
 }

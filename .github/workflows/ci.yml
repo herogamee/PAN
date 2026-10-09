@@ -15,7 +15,11 @@ jobs:
       - name: PHP syntax
         run: |
           find . -path './connectors/shopee-server/node_modules' -prune -o -type f -name '*.php' -print0 | xargs -0 -n1 php -l
-      - name: Payment method code display — no guessed mapping
+      - name: Timeline semantic and Orders UI regression — no invented timestamp
+        run: |
+          php tests/order-timeline.php
+          php tests/order-ui.php
+      - name: Legacy payment-method raw-value regression
         run: php tests/payment-method.php
   login-security-regression:
     runs-on: ubuntu-latest

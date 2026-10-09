@@ -1,0 +1,18 @@
+PAN v2.5.4 Complete — Shopee Connector 2.4.11
+
+1) Back up your entire existing PAN folder and actual database BEFORE upgrading.
+2) DO NOT replace/delete live storage/config.php, storage/*.sqlite*, runtime database,
+   API keys, Chromium profiles or user-owned files. This ZIP intentionally excludes them.
+3) For Windows XAMPP3 install folder: C:\xampp3\htdocs\pan\
+4) For an existing PAN v2.5.3, use the exact-base Patch v2.5.3 -> v2.5.4,
+   or copy only source files to your original PAN folder after backup.
+5) Reload Chrome unpacked connector at connectors/shopee-extension (version 2.4.11).
+6) Run php -l and Node tests; use a staging copy to test import and repair.
+7) In the Orders screen the payment-method column is gone; use:
+   - วันที่สั่งซื้อ (order created)
+   - วันที่ได้รับพัสดุ (courier delivered; NOT order Complete)
+8) Existing date-only purchase orders remain date-only unless a new valid creation
+   timestamp becomes available from a permitted Shopee session.
+9) A missing actual delivery time is NOT proof of successful delivery; the buyer
+   private API is not guaranteed to expose courier-delivered data for every order.
+10) No production deployment or real Shopee session acceptance is included in this ZIP.

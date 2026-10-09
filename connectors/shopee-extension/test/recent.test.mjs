@@ -314,13 +314,13 @@ test('payment detail prioritizes readable label over numeric Shopee codes, and r
   assert.equal(JSON.parse(named.metadata_json).codes.payment_method,'6');
 });
 
-test('numeric-only payment method 6 or 92 stays unresolved and must not mark detail complete',async()=>{
+test('numeric-only payment codes remain raw metadata but no longer determine delivery coverage',async()=>{
   const f=await fixture();
   for(const code of [6,92]){
     const meta=f.ctx.detailMeta({data:{payment_info:{payment_method:code},
       shipping:{carrier_name:'Courier'},pc_processing_info:{complete_time:1788000000}}});
     assert.equal(meta.payment_method,String(code));
-    assert.match(meta.detail_missing_fields,/payment_method/);
+    assert.doesNotMatch(meta.detail_missing_fields,/payment_method/);
     assert.equal(JSON.parse(meta.metadata_json).codes.payment_method,String(code));
   }
 });
@@ -338,4 +338,58 @@ test('v2.4.8 full sync checks account identity before every page',async()=>{
   await f.ctx.runSync(1,true);
   assert.match(f.state().error,/บัญชี Shopee เปลี่ยนระหว่าง Full Sync/);
   assert.equal(f.posts.length,0);
+});
+
+test('order-created timestamp is stored with actual Bangkok time, not silently downcast to date',async()=>{
+  const f=await fixture();
+  const stamp=Math.floor(Date.parse('2026-09-15T14:32:11+07:00')/1000);
+  const d=order('created-with-time');d.info_card.create_time=stamp;
+  const row=f.ctx.normalizeOrder(d,{userid:42,username:'fixture'});
+  assert.equal(row.ignoredReason,'');
+  assert.equal(row.items[0].order_created_at,'2026-09-15 14:32:11');
+  assert.equal(row.items[0].order_date,'2026-09-15');
+  assert.equal(row.items[0].date_source,'info_card.create_time');
+});
+
+test('only date precision from API stays date-only; no fabricated 07:00 at UTC midnight',async()=>{
+  const f=await fixture();
+  const d=order('date-only');d.info_card.create_time='2026-09-15';
+  const row=f.ctx.normalizeOrder(d,{userid:42,username:'fixture'});
+  assert.equal(row.items[0].order_date,'2026-09-15');
+  assert.equal(row.items[0].order_created_at,'');
+  assert.equal(f.ctx.extractBestListDate(d).precision,'date');
+  assert.equal(f.ctx.normalizeEpochSeconds('2026-09-15'),null);
+});
+
+test('payment time and shipping activity may not masquerade as order-created date',async()=>{
+  const f=await fixture();
+  const d=order('paid-and-shipped-only','');
+  d.info_card.pay_time=Math.floor(Date.parse('2026-10-05T06:00:00Z')/1000);
+  d.shipping={tracking_info:{ctime:Math.floor(Date.parse('2026-10-06T09:00:00Z')/1000)}};
+  assert.equal(f.ctx.extractBestListDate(d),null);
+  const row=f.ctx.normalizeOrder(d,{userid:42,username:'fixture'});
+  assert.equal(row.items[0].order_date,'');
+  assert.equal(row.items[0].order_created_at,'');
+  assert.equal(row.items[0].date_source,'unknown');
+});
+
+test('order Complete, shipping ETA and hub received time are not buyer delivery',async()=>{
+  const f=await fixture();
+  const at=Math.floor(Date.parse('2026-09-18T12:23:00Z')/1000);
+  const meta=f.ctx.detailMeta({data:{pc_processing_info:{complete_time:at},
+    shipping:{delivery_time:at,estimated_delivered_time:at,tracking_info:{received_time:at}},
+    buyer_received_time:at}});
+  assert.equal(meta.completed_at,'2026-09-18 19:23:00');
+  assert.equal(meta.delivered_at,'');
+  assert.equal(meta.delivery_date_source,'');
+});
+
+test('explicit courier delivered timestamp is accepted separately from order Complete',async()=>{
+  const f=await fixture();
+  const delivery=Math.floor(Date.parse('2026-09-17T13:19:20+07:00')/1000);
+  const complete=Math.floor(Date.parse('2026-09-18T10:10:10+07:00')/1000);
+  const meta=f.ctx.detailMeta({data:{shipping:{tracking_info:{delivered_time:delivery}},pc_processing_info:{complete_time:complete}}});
+  assert.equal(meta.delivered_at,'2026-09-17 13:19:20');
+  assert.equal(meta.completed_at,'2026-09-18 10:10:10');
+  assert.equal(meta.delivery_date_source,'detail.shipping.tracking_info.delivered_time');
 });

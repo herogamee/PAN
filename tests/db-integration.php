@@ -5,6 +5,7 @@
  */
 require_once __DIR__.'/../app/db.php';
 require_once __DIR__.'/../app/migrate.php';
+require_once __DIR__.'/../app/sync_anchor.php';
 
 function test_check(bool $ok, string $label): void {
     if (!$ok) throw new RuntimeException('FAIL: '.$label);
@@ -95,6 +96,14 @@ try {
     test_check(row_for($db,'CI-A2')===null,'invalid page cannot advance stored orders');
 
     import_test($db,[fixture('CI-B1','CI-K4','CI-B')],'scan-b');
+    $db->exec("UPDATE orders SET order_date='2026-12-28',date_source='shipping.tracking_info.ctime',order_created_at='' WHERE order_no='CI-B1'");
+    $anchor=recent_sync_anchor($db,'CI-B');
+    test_check($anchor['latest_order_date']===''&&$anchor['cutoff_date']==='',
+        'recent sync anchor ignores old shipping fallback as purchase date');
+    $noDate=fixture('CI-B1','CI-K4','CI-B');$noDate['order_date']='';$noDate['date_source']='unknown';
+    import_test($db,[$noDate],'no-created-date');
+    test_check(row_for($db,'CI-B1')['date_source']==='shipping.tracking_info.ctime',
+        'reimport without creation timestamp preserves suspect legacy date provenance');
     $before=count_rows($db,'orders');
     check_throws(fn()=>import_test($db,[fixture('CI-B1','CI-K4','CI-A')],'wrong-owner'),
         'existing order account cannot be reassigned');
@@ -106,28 +115,37 @@ try {
     test_check($none['deleted']===0 && row_for($db,'CI-B1')!==null,'Cancellation cannot delete other account order');
 
     $partial=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'']);
-    test_check($partial['detail_state']==='partial' && row_for($db,'CI-A1')['detail_state']==='partial',
-        'missing completion timestamp gives partial, not false complete');
-    $complete=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00']);
-    test_check($complete['detail_state']==='complete','complete only when required detail fields exist');
-    $numeric=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'payment_method'=>'92','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00']);
-    test_check($numeric['detail_state']==='partial' && in_array('payment_method',$numeric['missing_fields'],true),
-        'numeric Shopee payment code is unresolved, never complete');
-    $codeQueue=repair_queue($db,'CI-A',10,false,false,0);
-    test_check($codeQueue['total']===1 && $codeQueue['rows'][0]['order_no']==='CI-A1',
-        'unresolved numeric payment detail is eligible for manual Repair');
-    // Previous PAN releases marked numeric codes as complete; queue must recover them.
+        'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00',
+        'delivered_at'=>'','delivery_date_source'=>'']);
+    test_check($partial['detail_state']==='partial' && in_array('delivered_at',$partial['missing_fields'],true),
+        'order Complete without courier delivered event is partial, not received');
+    $ambiguous=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00',
+        'delivered_at'=>'2026-10-01 18:00:00','delivery_date_source'=>'detail.shipping.delivery_time']);
+    test_check($ambiguous['detail_state']==='partial' && pan_delivery_view(row_for($db,'CI-A1'))['value']!=='2026-10-01 18:00:00',
+        'ambiguous legacy delivery_time is never accepted as actual receipt');
+    // Historic records whose old detail_state says complete must still be eligible for recheck.
     $db->exec("UPDATE orders SET detail_state='complete' WHERE order_no='CI-A1'");
     $legacyQueue=repair_queue($db,'CI-A',10,false,false,0);
     test_check($legacyQueue['total']===1 && $legacyQueue['rows'][0]['order_no']==='CI-A1',
-        'legacy complete + raw numeric method still eligible for repair');
-    $named=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'payment_method'=>'ShopeePay','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00']);
-    test_check($named['detail_state']==='complete' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
-        'recognized readable method can complete and leaves manual Repair queue');
+        'legacy Complete and ambiguous delivery source remain in manual Repair queue');
+    $complete=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-03 10:00:00',
+        'delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
+    test_check($complete['detail_state']==='complete' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
+        'verified courier-delivered timestamp closes delivery-detail requirement');
+    $numeric=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'payment_method'=>'92','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-03 10:00:00',
+        'delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
+    test_check($numeric['detail_state']==='complete' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
+        'unused numeric payment code no longer forces endless Repair');
+    $placedSql=pan_order_placed_sql();
+    $db->exec("UPDATE orders SET order_created_at='',order_date='2026-10-04',date_source='shipping.tracking_info.ctime' WHERE order_no='CI-A1'");
+    $when=$db->query("SELECT $placedSql placed FROM orders WHERE order_no='CI-A1'")->fetchColumn();
+    test_check($when===null,'paid/shipping fallback cannot be used for purchase-date analytics');
+    $db->exec("UPDATE orders SET order_created_at='2026-10-01 09:40:01',date_source='info_card.create_time' WHERE order_no='CI-A1'");
+    $when=$db->query("SELECT $placedSql placed FROM orders WHERE order_no='CI-A1'")->fetchColumn();
+    test_check($when==='2026-10-01 09:40:01','genuine order creation is used ahead of old date-only fallback');
     $rq=repair_queue($db,'CI-B',10,false,false,0);
     test_check($rq['total']===1 && $rq['rows'][0]['order_no']==='CI-B1',
         'Repair queue is scoped to account with pending records');

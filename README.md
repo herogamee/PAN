@@ -1,4 +1,4 @@
-# PAN 2.5.3 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.4 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -15,6 +15,16 @@
 **เริ่มติดตามงาน 7 เฟสใน GitHub อย่างเป็นทางการ:** [ROADMAP.md](ROADMAP.md) · [Issues #1–#7](https://github.com/herogamee/PAN/issues) · [Acceptance/Test Matrix](docs/ACCEPTANCE-MATRIX.md) · [Staging Runbook](docs/STAGING-ACCEPTANCE.md).
 
 PAN v2.5.3 + Connector v2.4.10 มี source และ automated CI ผ่านแล้ว แต่ **ยังไม่ผ่าน Production Acceptance** จนกว่าจะตรวจ Shopee real-session, Payment/Shipping/Repair, database transactions และ restore ตาม [Phase 1](https://github.com/herogamee/PAN/issues/1). **ห้ามตีความว่า CI pass = live pass.**
+
+## PAN Core 2.5.4 — วันที่สั่งซื้อ / วันที่ได้รับพัสดุ
+
+- ถอด **ช่องทางการชำระเงิน** ออกจากหน้าคำสั่งซื้อ ตัวกรอง และกราฟ Analytics แต่เก็บค่าดิบในฐานเดิมโดยไม่ลบข้อมูล
+- **วันที่สั่งซื้อ** = วัน/เวลาสร้างออเดอร์ที่ตรวจพบจาก Shopee โดยตรง; หากมีเฉพาะวันที่ จะระบุว่าไม่พบเวลา ไม่ใช้เวลาชำระเงิน/ขนส่ง/Complete แทน
+- **วันที่ได้รับพัสดุ** = วัน/เวลาที่ขนส่งนำส่งถึงผู้รับตามเหตุการณ์ delivery ที่ชัดเจน; **ไม่ใช้ Shopee Order Complete** หรือเวลาร้านเริ่มส่งเป็น fallback
+- ยกเลิก fallback ข้ามความหมายในตัวกรอง/เรียงวันที่, Dashboard/Analytics และจุดอ้างอิง Recent Sync
+- [Release Notes v2.5.4](RELEASE-NOTES-v2.5.4.md) · [Date Acceptance](docs/PAN-v2.5.4-DATE-ACCEPTANCE.md) · [Phase 2](https://github.com/herogamee/PAN/issues/2)
+
+**ยังไม่ใช่ Live Acceptance:** Shopee buyer private API อาจไม่ส่งเวลาขนส่งนำส่งจริงสำหรับทุกคำสั่งซื้อ หากไม่มีหลักฐานต้องแสดงว่าไม่ทราบ
 
 Shopee เป็นเพียง Connector ตัวแรกของ PAN ไม่ใช่ชื่อของระบบหลัก เพื่อให้ในอนาคตเพิ่ม Lazada, TikTok Shop, LINE Shopping หรือ Marketplace อื่นได้โดยไม่ต้องเปลี่ยนชื่อโปรเจกต์อีก
 
@@ -293,7 +303,7 @@ PAN
 
 ---
 
-Version: **PAN 2.5.3**  
+Version: **PAN 2.5.4**  
 Character: **น้องแพน**  
 Role: **Marketplace & Commerce Assistant**  
 Brand: **itoom.work**
