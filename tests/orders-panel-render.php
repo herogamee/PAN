@@ -23,7 +23,12 @@ $orders=[
  'date_source'=>'info_card.create_time','order_date'=>'2026-10-10','shop_name'=>'Store',
  'qty'=>0,'raw_subtotal'=>0,'subtotal'=>0,'discount_total'=>0,'total_paid'=>0,
  'list_type'=>7,'order_status'=>'shipping','validation_state'=>'verified_v200',
- 'source_account_username'=>'fixture','source_account_id'=>'sample']
+ 'source_account_username'=>'fixture','source_account_id'=>'sample'],
+ ['id'=>5,'order_no'=>'ORDER-MANUAL','order_created_at'=>'2026-10-11',
+  'date_source'=>'info_card.create_time','order_date'=>'2026-10-11','shop_name'=>'Demo',
+  'qty'=>3,'raw_subtotal'=>105,'subtotal'=>105,'discount_total'=>0,'total_paid'=>105,
+  'list_type'=>3,'order_status'=>'completed','validation_state'=>'verified_v200',
+  'source_account_username'=>'fixture','source_account_id'=>'sample']
 ];
 $orderItemsByOrder=[3=>[
  ['product_name'=>'Foo <script>alert(1)</script>','variant_name'=>'Red <img onerror=alert(1)>',
@@ -31,7 +36,12 @@ $orderItemsByOrder=[3=>[
   'quantity'=>2,'actual_unit_price'=>25,'actual_line_total'=>50],
  ['product_name'=>'Second Product','variant_name'=>'Blue','image_url'=>'https://example.org/img.jpg',
   'product_url'=>'https://shopee.co.th/item','quantity'=>1,'actual_unit_price'=>40,'actual_line_total'=>40],
-],4=>[]];
+],4=>[],5=>[
+ ['product_name'=>'Synthetic corrected rod','variant_name'=>'5#','image_url'=>'','product_url'=>'',
+  'quantity'=>3,'actual_unit_price'=>6.10,'actual_line_total'=>6.10,'import_source'=>'pan_user_attested_quantity'],
+ ['product_name'=>'Synthetic extra option','variant_name'=>'second option not yet verified','image_url'=>'','product_url'=>'',
+  'quantity'=>1,'actual_unit_price'=>0,'actual_line_total'=>0,'import_source'=>'pan_user_attested_quantity'],
+]];
 ob_start();
 try { eval('?>'.$template);$html=ob_get_clean(); }
 catch(Throwable $e){ob_end_clean();throw $e;}
@@ -46,7 +56,8 @@ $checks=[
  'missing product data is distinguished from missing purchase' => str_contains($html,'ไม่ได้หมายความว่าไม่มีการสั่งซื้อจริง'),
  'order panels do not claim PAN saved quantities are authoritative Shopee totals' => str_contains($html,'สินค้าที่ PAN บันทึกในคำสั่งซื้อ') && str_contains($html,'จำนวนชิ้นหรือตัวเลือกไม่ตรง'),
  'per-line amounts and quantity are visible' => str_contains($html,'฿50.00') && str_contains($html,'฿40.00') && str_contains($html,'3 ชิ้น'),
- 'both details are collapsed by default' => substr_count($html,'class="order-products-row" hidden')===2,
+ 'manual quantities are labeled but no invented prices are rendered' => str_contains($html,'จำนวนบางรายการแก้ตามการยืนยันของผู้ใช้') && str_contains($html,'รอยืนยันราคา') && str_contains($html,'4 ชิ้น') && str_contains($html,'ราคาสินค้า/ส่วนลดของรายการที่แก้ยังไม่ยืนยัน'),
+ 'all details are collapsed by default' => substr_count($html,'class="order-products-row" hidden')===3,
 ];
 foreach($checks as $label=>$ok){
  if(!$ok)throw new RuntimeException('FAIL: '.$label);

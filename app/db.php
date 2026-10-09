@@ -331,11 +331,68 @@ function pan_validate_import_batch(PDO $db, array $items): string {
     return $batchAccount;
 }
 
+/** Fail closed before mutating a user-attested order. Never silently erase a manual review line. */
+function pan_guard_attested_order_reimport(PDO $db, array $items, string $jobType): void {
+    $incoming=[];
+    foreach($items as $r){
+        if(!is_array($r))continue;
+        $no=trim((string)($r['order_no']??''));
+        if($no==='')continue;
+        $incoming[$no][]=$r;
+    }
+    if(!$incoming)return;
+    foreach(array_chunk(array_keys($incoming),250) as $part){
+        $slots=implode(',',array_fill(0,count($part),'?'));
+        $check=$db->prepare("SELECT o.order_no FROM orders o JOIN order_items i ON i.order_id=o.id WHERE o.order_no IN ($slots) AND i.import_source='pan_user_attested_quantity' GROUP BY o.order_no");
+        $check->execute($part);
+        foreach($check->fetchAll(PDO::FETCH_COLUMN) as $no){
+            $no=(string)$no;
+            if($jobType!=='single_order_recheck')
+                throw new RuntimeException('An order has user-attested quantities; use verified single-order recheck before any new Full/Recent Sync can overwrite it');
+            $saved=$db->prepare('SELECT product_key,product_name,variant_name,quantity,import_source FROM order_items WHERE order_id=(SELECT id FROM orders WHERE order_no=?)');
+            $saved->execute([$no]);$savedRows=$saved->fetchAll(PDO::FETCH_ASSOC);
+            $expectedTotal=0;$expectedLines=0;$oldKnown=[];$extraKnown=[];
+            foreach($savedRows as $line){
+                $expectedTotal+=(int)$line['quantity'];$expectedLines++;
+                if(str_starts_with((string)$line['product_key'],'pan-manual:'))$extraKnown[]=$line;
+                else $oldKnown[(string)$line['product_key']]=(int)$line['quantity'];
+            }
+            $candidate=$incoming[$no]??[];$seen=[];$qty=0;
+            foreach($candidate as $line){
+                $key=trim((string)($line['product_key']??''));
+                $units=(int)($line['quantity']??0);
+                if($units<1||$key===''||isset($seen[$key]))throw new RuntimeException('User-attested Order candidate has invalid quantity or duplicate SKU');
+                $seen[$key]=$line;$qty+=$units;
+            }
+            if($qty!==$expectedTotal||count($candidate)<$expectedLines)
+                throw new RuntimeException('Verified single-order recheck disagrees with the user-confirmed number of purchased pieces and lines');
+            foreach($oldKnown as $key=>$savedUnits){
+                if(!isset($seen[$key])||(int)$seen[$key]['quantity']!==$savedUnits)
+                    throw new RuntimeException('Verified single-order recheck disagrees with a known saved variant/quantity');
+            }
+            if($extraKnown){
+                $remaining=[];foreach($seen as $key=>$line)if(!isset($oldKnown[$key]))$remaining[]=$line;
+                if(count($remaining)<count($extraKnown))throw new RuntimeException('User-attested missing variant is still absent from the verified snapshot');
+                foreach($extraKnown as $placeholder){
+                    $found=false;
+                    foreach($remaining as $i=>$line){
+                        if(trim((string)($line['product_name']??''))!==trim((string)$placeholder['product_name']))continue;
+                        if(trim((string)($line['variant_name']??''))===''||trim((string)($line['variant_name']??''))===(string)$placeholder['variant_name'])continue;
+                        if((int)$line['quantity']!==(int)$placeholder['quantity'])continue;
+                        unset($remaining[$i]);$found=true;break;
+                    }
+                    if(!$found)throw new RuntimeException('Missing product variant is not verified in the Shopee Buyer snapshot');
+                }
+            }
+        }
+    }
+}
+
 function import_collector_payload(PDO $db,array $payload):array {
     ensure_schema_v200($db);$items=$payload['items']??null;if(!is_array($items)||!$items)throw new RuntimeException('ไม่พบรายการจาก Collector');if(count($items)>2000)throw new RuntimeException('หนึ่งครั้งนำเข้าได้สูงสุด 2,000 รายการ');
     $source=substr((string)($payload['source']??'collector'),0,60);$sourceUrl=substr((string)($payload['source_url']??''),0,1000);$jobType=substr((string)($payload['job_type']??'sync'),0,30);$scanId=substr((string)($payload['scan_id']??''),0,80);
     $orders=[];$existingOrders=[];$previous=[];$orderItemKeys=[];$itemCount=0;$reviewCount=0;$batchAccountId='';$batchUsername='';$db->beginTransaction();
-    try{pan_validate_import_batch($db,$items);foreach($items as $r){if(!is_array($r))continue;$name=trim((string)($r['product_name']??''));if($name==='')continue;$key=trim((string)($r['product_key']??''));if($key==='')continue;
+    try{pan_validate_import_batch($db,$items);pan_guard_attested_order_reimport($db,$items,$jobType);foreach($items as $r){if(!is_array($r))continue;$name=trim((string)($r['product_name']??''));if($name==='')continue;$key=trim((string)($r['product_key']??''));if($key==='')continue;
       $orderNo=trim((string)($r['order_no']??''));if($orderNo==='')continue;
       $date=(string)($r['order_date']??'');$dateSource=trim((string)($r['date_source']??''));if($date!==''&&!preg_match('/^20\\d{2}-\\d{2}-\\d{2}$/',$date))continue;if($date===''&&$dateSource!=='unknown')continue;
       $accountId=trim((string)($r['source_account_id']??''));if($accountId==='')continue;$username=trim((string)($r['source_account_username']??''));$batchAccountId=$accountId;$batchUsername=$username;

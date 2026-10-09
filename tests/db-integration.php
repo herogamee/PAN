@@ -273,6 +273,41 @@ try {
     $otherAccount=row_for($db,'CI-A1');
     test_check($otherAccount!==null, 'single order repair did not delete other orders');
 
+    // An operator-confirmed quantity must NOT be overwritten by an old, incomplete
+    // Full/Recent Sync. A verified one-order recheck can replace manual rows only
+    // when the entire observed count and distinct variant evidence agree.
+    $knownPants=fixture('CI-ATTEST','shopee:500:100:111','CI-A',1);
+    $knownPants['product_name']='Synthetic Pants';$knownPants['variant_name']='W';
+    $knownRod=fixture('CI-ATTEST','shopee:500:200:222','CI-A',1);
+    $knownRod['product_name']='Synthetic Rod';$knownRod['variant_name']='5#';
+    import_test($db,[$knownPants,$knownRod],'attest-legacy');
+    $attestId=(int)row_for($db,'CI-ATTEST')['id'];
+    $db->prepare("UPDATE order_items SET quantity=3,needs_review=1,import_source='pan_user_attested_quantity' WHERE order_id=? AND product_key=?")
+       ->execute([$attestId,'shopee:500:200:222']);
+    $db->prepare("INSERT INTO order_items(order_id,product_key,product_name,variant_name,quantity,needs_review,import_source) VALUES(?,?,?,?,?,?,?)")
+       ->execute([$attestId,'pan-manual:second-pants:synthetic','Synthetic Pants','unverified second variant',1,1,'pan_user_attested_quantity']);
+    $attestedQty=$db->prepare('SELECT COALESCE(SUM(quantity),0) FROM order_items WHERE order_id=?');
+    $attestedQty->execute([$attestId]);
+    test_check((int)$attestedQty->fetchColumn()===5,'Operator-attested 2→5 correction is preserved in stored order');
+    check_throws(fn()=>import_test($db,[$knownPants,$knownRod],'attest-old-full-sync'),
+      'Incomplete ordinary sync rejects overwriting user-confirmed 5 units');
+    $attestedQty->execute([$attestId]);
+    test_check((int)$attestedQty->fetchColumn()===5,'Rejected ordinary sync did not revert user-confirmed quantities');
+    check_throws(fn()=>import_collector_payload($db,[
+      'source'=>'synthetic_ci','job_type'=>'single_order_recheck','scan_id'=>'attest-bad',
+      'items'=>[$knownPants,$knownRod]]),
+      'Targeted recheck with only two units rejects replacement');
+    $verifiedRod=$knownRod;$verifiedRod['quantity']=3;$verifiedRod['actual_line_total']=46.5;
+    $verifiedOther=$knownPants;$verifiedOther['product_key']='shopee:500:100:112';$verifiedOther['variant_name']='Black';
+    $fresh=import_collector_payload($db,[
+      'source'=>'synthetic_ci','job_type'=>'single_order_recheck','scan_id'=>'attest-verified',
+      'items'=>[$knownPants,$verifiedOther,$verifiedRod]]);
+    $attestedQty->execute([$attestId]);
+    $stillManual=$db->prepare("SELECT COUNT(*) FROM order_items WHERE order_id=? AND import_source='pan_user_attested_quantity'");
+    $stillManual->execute([$attestId]);
+    test_check((int)$attestedQty->fetchColumn()===5&&(int)$stillManual->fetchColumn()===0,
+      'Complete targeted verified snapshot replaces provisional variant without losing five units');
+
     if($mode==='mysql'){
         // Genuine SQLite→MySQL migration into the **same disposable** database,
         // after deleting all synthetic test rows (no source production files).

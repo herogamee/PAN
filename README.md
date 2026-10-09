@@ -1,4 +1,4 @@
-# PAN 2.5.9 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.10 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -356,3 +356,10 @@ Brand: **itoom.work**
 ## PAN 2.5.1 maintenance update
 
 See [`docs/PAN-v2.5.1-HANDOFF.md`](docs/PAN-v2.5.1-HANDOFF.md) for 2.5.1 fixes, test/deployment instructions, and explicit production-validation limitations. Historical v2.5.0 release notes are retained unchanged.
+
+## PAN Core 2.5.10 — บันทึกจำนวนยืนยันโดยผู้ใช้ / ป้องกัน Sync ทับข้อมูลที่แก้
+
+- แสดงจำนวนสินค้าที่เจ้าของบัญชียืนยันด้วยตนเองแยกจาก API และซ่อนราคาสินค้าที่ไม่สามารถยืนยันได้
+- ไม่ให้ Full/Recent Sync ที่ข้อมูลยังไม่ครบเขียนทับรายการที่แก้แล้วโดยไม่เตือน ต้องใช้การตรวจเฉพาะออเดอร์พร้อมผลจาก Shopee ครบ
+- ไม่มีการสร้างตัวเลือกราคา/วันเวลา/ชื่อรุ่นสินค้าที่ไม่ได้รับจากข้อมูลจริง
+- การแก้ไขข้อมูลจริงของผู้ใช้ต้องผ่านเครื่องมือแยกที่มี backup และบันทึกการยืนยันไว้ในเครื่องส่วนตัว ห้ามเก็บ SQLite, config หรือเลขออเดอร์จริงใน GitHub

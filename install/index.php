@@ -47,7 +47,7 @@ if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
                 $migration=migrate_sqlite_to_mysql(['driver'=>'sqlite','path'=>$existingSqliteRel],$dbCfg);
             }
             $cfg=[
-              'version'=>'2.5.9','installed_at'=>date('c'),'app_url'=>$appUrl,
+              'version'=>'2.5.10','installed_at'=>date('c'),'app_url'=>$appUrl,
               'admin_user'=>$admin,'admin_password_hash'=>password_hash($password,PASSWORD_DEFAULT),
               'api_key'=>bin2hex(random_bytes(32)),'maintenance'=>false,'db'=>$dbCfg
             ];

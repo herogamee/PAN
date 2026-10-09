@@ -18,7 +18,7 @@ function pan_order_items_for_page(PDO $db, array $orders): array {
         $placeholders=implode(',',array_fill(0,count($chunk),'?'));
         $sql='SELECT order_id, id, product_name, variant_name, image_url, product_url, '
             .'quantity, purchase_price, net_unit_price, actual_unit_price, '
-            .'actual_line_total, needs_review FROM order_items '
+            .'actual_line_total, needs_review, import_source FROM order_items '
             .'WHERE order_id IN ('.$placeholders.') ORDER BY order_id ASC, id ASC';
         $statement=$db->prepare($sql);
         $statement->execute($chunk);
@@ -53,4 +53,9 @@ function pan_order_item_line_total(array $item): float {
     $recorded=(float)($item['actual_line_total']??0);
     if(is_finite($recorded)&&$recorded>0)return $recorded;
     return max(0,(int)($item['quantity']??0))*pan_order_item_unit_price($item);
+}
+
+/** An operator-attested quantity is not proof of unit pricing or a Shopee API snapshot. */
+function pan_order_item_price_pending(array $item): bool {
+    return (string)($item['import_source']??'')==='pan_user_attested_quantity';
 }
