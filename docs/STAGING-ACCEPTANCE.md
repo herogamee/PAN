@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.9 + Shopee Connector v2.4.14**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.10 + Shopee Connector v2.4.14**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.9`, Extension manifest เป็น `2.4.14`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.10`, Extension manifest เป็น `2.4.14`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -154,3 +154,15 @@ Login v2.5.3 requires the login page's new CSRF hidden field; refresh old login 
 - [ ] เก็บหลักฐานเพียงผลรวม/ประเภทฟิลด์ที่ปกปิดแล้ว ห้ามใส่เลข Order จริง รูป buyer ID, cookies, shipping addresses หรือ payload JSON ดิบลง Public GitHub
 
 **Evidence:** [Five-job CI](https://github.com/herogamee/PAN/actions/runs/37965956961) · [Quantity acceptance](PAN-v2.5.9-QUANTITY-ACCEPTANCE.md). Live Buyer API validation is **PENDING**.
+
+## 12. User-attested quantity corrections (Core v2.5.10)
+
+- [ ] ตรวจฐาน SQLite/MySQL จาก backup แบบส่วนตัวว่าออเดอร์เก่าที่ต้องแก้มีจำนวนที่บันทึกอยู่จริงเท่าใด ก่อนแก้ไข
+- [ ] เตรียมสำเนาฐานข้อมูลเพื่อตรวจสอบ, ทำ backup ที่สร้างจาก SQLite online backup/WAL อย่างถูกต้อง และอย่านำฐานเก่าทั้งก้อนวางทับฐานสดที่มี Order ใหม่
+- [ ] ถ้าผู้ใช้ยืนยันจำนวนด้วยตนเอง แต่ Shopee Buyer API ไม่สามารถให้รายละเอียดครบ ให้ติดป้าย `pan_user_attested_quantity` เฉพาะแถวที่แก้; จำนวนที่ยืนยันต่างจากราคาต่อหน่วย/ส่วนลดซึ่งยังไม่ยืนยัน
+- [ ] หน้า Orders ต้องแสดงจำนวนที่แก้และบอกผู้ใช้ชัดว่าราคาของแถวแก้ยังไม่ทราบ ห้ามนำค่าเดิมมาคูณจำนวนใหม่แล้วกล่าวว่าเป็นราคาจริง
+- [ ] Full/Recent Sync ที่ส่งข้อมูลจำนวนเก่าขาด หรือหล่นตัวเลือกต้องหยุดและ rollback ทั้ง batch; ไม่เลื่อน checkpoint เพื่อให้หายไปอีก
+- [ ] Single-Order Recheck ที่มีหลักฐานจำนวน/รุ่น/SKU ครบ จึงสามารถแทน provisional rows ได้; รีเฟรชแล้วข้อมูลต้องตรงและไม่กระทบ Order อื่น
+- [ ] อย่าอัปไฟล์ SQLite, `storage/config.php`, raw JSON หรือเลข Order จริงขึ้น GitHub; เผยแพร่ได้เพียง synthetic fixtures และผลนับที่ปกปิดตัวระบุแล้ว
+
+[Core 2.5.10 release notes](../RELEASE-NOTES-v2.5.10.md) · [GitHub CI five jobs PASS](https://github.com/herogamee/PAN/actions/runs/37971871137). User-authorized historical data correction is not synonymous with Buyer API acceptance.

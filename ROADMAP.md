@@ -1,8 +1,16 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.9 + Shopee Connector v2.4.14** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.10 + Shopee Connector v2.4.14** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
+
+## PAN v2.5.10 — ป้องกันข้อมูลจำนวนสินค้าที่ผู้ใช้ยืนยัน
+
+- **ปัญหาที่ตรวจจากฐานส่วนตัว:** เมื่อแก้ตัวอ่าน API ในรุ่นก่อน ฐานเดิมไม่ถูกแก้เอง ข้อมูลใน `order_items` ยังอาจมีจำนวนต่ำกว่าที่เจ้าของบัญชียืนยัน; ต้องแยกการยืนยันโดยผู้ใช้จากหลักฐาน API และไม่เขียนทับ/แต่งราคาขึ้นใหม่
+- **Source ทำเสร็จ:** Orders inline panel แสดงป้ายว่ารายการที่ `import_source=pan_user_attested_quantity` เป็นจำนวนที่ผู้ใช้ยืนยัน พร้อมซ่อนราคาต่อชิ้น/มูลค่าบรรทัดซึ่งยังไม่ยืนยัน; Full/Recent Sync ที่อาจเขียนทับรายการนี้จะหยุดก่อนแก้ข้อมูล และอนุญาตเฉพาะ single-order recheck ที่มี SKU / variant / จำนวนตรงกับหลักฐานทั้งหมด
+- **Source ปลอดข้อมูลส่วนตัว:** ไม่มีเลขคำสั่งซื้อจริง, ข้อมูลผู้ซื้อ, ZIP/SQLite/credentials หรือสคริปต์ user-specific ใน GitHub; เครื่องมือแก้เฉพาะ Order และสำเนาฐานข้อมูลส่วนบุคคลส่งตรงให้เจ้าของบัญชีแยกต่างหาก
+- **ทดสอบ:** [Source commit](https://github.com/herogamee/PAN/commit/9e3017f2c67efcf424d5d314b545c289e9e6c9cc) · [CI 5 งานผ่าน](https://github.com/herogamee/PAN/actions/runs/37971871137) · [Release notes](RELEASE-NOTES-v2.5.10.md)
+- **คงค้าง:** ชื่อตัวเลือกที่ขาด และเงินต่อหน่วย/ส่วนลดของสินค้าเพิ่มเติม ต้องยืนยันจาก Shopee Buyer ที่ได้รับอนุญาตก่อนนำไปทำราคา/Analytics ที่ถือเป็นข้อมูลจริง; ฐานจริงไม่ถือว่า Live API verified จากการป้อนจำนวนโดยผู้ใช้
 
 ## PAN v2.5.9 — จำนวนชิ้นและตัวเลือกสินค้าไม่ตรง
 
