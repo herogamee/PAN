@@ -1,6 +1,6 @@
 # PAN — Acceptance & Test Matrix
 
-> อัปเดต 2026-10-08 · baseline: **PAN 2.5.3 / Shopee Connector 2.4.10** · [Roadmap](../ROADMAP.md).
+> อัปเดต 2026-10-09 · baseline: **PAN 2.5.5 / Shopee Connector 2.4.12** · [Roadmap](../ROADMAP.md).
 >
 > **อย่าสับสน**: automated CI ผ่าน หมายถึง source/tests ที่รันได้ผ่านเท่านั้น **ไม่ได้** หมายถึงผ่าน Shopee live API, browser login, ข้อมูลร้านจริง หรือ production DB.
 
@@ -13,6 +13,8 @@
 | AUTO-03 | Server Connector regression + installed Playwright Chromium fixture | **PASS (CI)** | [Same CI run](https://github.com/herogamee/PAN/actions/runs/37746656907) |
 | AUTO-06 | Login throttle / CSRF security tests | **PASS (synthetic CI)** | [Passed workflow](https://github.com/herogamee/PAN/actions/runs/37754666248) · [Login tests](../tests/login-throttle.php) |
 | AUTO-07 | PDO SQLite + disposable MariaDB integration / rollback / migration | **PASS (synthetic CI)** | [Passed workflow](https://github.com/herogamee/PAN/actions/runs/37754666248) · [DB integration tests](../tests/db-integration.php) |
+| AUTO-08 | Buyer carrier-name UI removal (Orders table/filter/Analytics), dated courier proof preserved | **PASS (CI)** | [run](https://github.com/herogamee/PAN/actions/runs/37938489873) · [source UI tests](../tests/order-ui.php) |
+| AUTO-09 | Legacy missing-carrier-only Repair excluded; PDO SQLite/MariaDB integration, account counts | **PASS (synthetic CI)** | [run](https://github.com/herogamee/PAN/actions/runs/37938489873) · [Repair policy tests](../tests/carrier-repair.php) · [DB integration](../tests/db-integration.php) |
 | AUTO-04 | Local PHP PDO SQLite/MySQL integration on production-like database | **NOT VERIFIED** | [Local build limitations](LOCAL-VALIDATION-v2.5.1.txt) |
 | AUTO-05 | Live Shopee buyer API / payment/logistics/category via a real user session | **NOT VERIFIED** | [Handoff limitations](PAN-v2.5.1-HANDOFF.md) |
 
@@ -27,9 +29,11 @@
 | PAN-P1-05 | [#1](https://github.com/herogamee/PAN/issues/1) | Cancelled order + changed item snapshot | Cancelled purchase excluded, stale items reconciled only on verified complete snapshot | Pending |
 | PAN-P1-06 | [#1](https://github.com/herogamee/PAN/issues/1) | Category queue across pages, fail one item | Later items processed, no infinite repeats, Order Sync unaffected | Pending |
 | PAN-P2-00 | [#2](https://github.com/herogamee/PAN/issues/2) | Numeric Shopee payment codes 6/92 | Code now treats numeric methods as unknown, favors names in Detail and leaves manual Repair available; meaning of codes remains unverified | Pending live evidence |
-| PAN-P2-01 | [#2](https://github.com/herogamee/PAN/issues/2) | Live payment / shipping / tracking / timestamps | UI values agree with sanitized real API examples; no invented data | Pending |
+| PAN-P2-01 | [#2](https://github.com/herogamee/PAN/issues/2) | Live buyer tracking / actual courier-delivery / timestamps | UI values agree with sanitized Shopee evidence; unverified payment/carrier provider names stay hidden | Pending |
 | PAN-P2-02 | [#2](https://github.com/herogamee/PAN/issues/2) | Detail state and repair retry | `pending/partial/error/complete` distinguish missing vs failed vs done | Pending |
 | PAN-P2-03 | [#2](https://github.com/herogamee/PAN/issues/2) | Multi-page Repair/resume | No skipped pages, no cross-account mutation, failed queue recoverable | Pending |
+| PAN-P2-04 | [#2](https://github.com/herogamee/PAN/issues/2) | Hide carrier provider UI, keep historical raw/receipt dates | Column/filter/Analytics removed; date retained; raw DB not altered | **PASS source+CI**, live pending |
+| PAN-P2-05 | [#2](https://github.com/herogamee/PAN/issues/2) | Missing buyer carrier name no longer forces Repair or false pending count | Carrier-only old partial skipped; genuine missing courier delivered evidence still retryable | **PASS synthetic CI**, live pending |
 | PAN-P3-01 | [#3](https://github.com/herogamee/PAN/issues/3) | Product/Shop/Category filters, sorts, KPIs | Count/shop/category/spend/price history match order fixture/staging DB | Pending |
 | PAN-P3-02 | [#3](https://github.com/herogamee/PAN/issues/3) | Manual merge/split + variant/unit correctness | No false auto-merge, reversible change and immutable source order history | Not implemented |
 | PAN-P4-01 | [#4](https://github.com/herogamee/PAN/issues/4) | Server Connector Windows XAMPP3 + Ubuntu | Profile persists across restart; authorized session sync/repair succeed | Pending |

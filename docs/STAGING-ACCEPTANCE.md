@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.3 + Shopee Connector v2.4.10**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.5 + Shopee Connector v2.4.12**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.3`, Extension manifest เป็น `2.4.10`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.5`, Extension manifest เป็น `2.4.12`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -103,9 +103,14 @@ GitHub Actions also runs MySQL tests against its **dedicated disposable MariaDB 
 
 Login v2.5.3 requires the login page's new CSRF hidden field; refresh old login tabs. Rate-limit counter files are stored inside `storage/auth-throttle/`; this directory must be writable by PHP, denied from HTTP access, and ignored by Git. Locked login responds HTTP 429 and Retry-After. When behind reverse proxies, validate shared-client-IP behavior before public promotion; forwarded headers are intentionally not trusted blindly.
 
-## 8. ตรวจช่องทางการชำระเงิน (PAN 2.5.3)
-- [ ] คอลัมน์ Order, ตัวกรอง และ Analytics ต้องใช้ชื่อ **ช่องทางการชำระเงิน** (ไม่ใช่สถานะหรือยอดจ่าย)
-- [ ] รหัสเลข 6/92 ในข้อมูลเก่าแสดงเป็น **ยังไม่ทราบช่องทาง (รหัส Shopee N)** และ Repair queue หาได้แม้ Detail เคย complete
-- [ ] ใช้ Shopee session ที่ได้รับอนุญาตกับ Connector 2.4.10 แล้วทดสอบด้วยข้อมูลจำลอง/ปกปิดตัวตน: ถ้า Shopee ส่งชื่อให้ใช้ชื่อนั้น; ถ้ามีเพียงรหัสให้คงสถานะ partial
-- [ ] ห้ามตั้งชื่อช่องทางจากรหัส 6/92 โดยไม่มีหลักฐาน mapping ที่เชื่อถือได้
-- [ ] ปฏิเสธการ Deploy ถ้า Regression หรือ Transaction Test ล้มเหลว
+## 8. การตรวจรับข้อมูลขนส่งและวันที่ได้รับพัสดุ (PAN 2.5.5)
+
+- [ ] Orders ต้องไม่มีคอลัมน์ **ขนส่ง**, ตัวกรองบริษัทขนส่ง และสรุป/กราฟบริษัทขนส่งใน Analytics; ช่องทางชำระเงินยังคงไม่แสดง
+- [ ] วันที่สั่งซื้อยังมาจากเวลาสร้างคำสั่งซื้อจริง (date-only ต้องไม่เพิ่มเวลา 00:00 ขึ้นมาเอง)
+- [ ] วันที่ได้รับพัสดุยังใช้เฉพาะหลักฐานนำส่งถึงผู้รับ ไม่ใช่วันที่ร้านส่งหรือวันที่ Order Complete
+- [ ] หาก Buyer API ตอบแต่เลขติดตามและวันนำส่ง โดยไม่มีชื่อบริษัทขนส่ง ต้องเก็บเลขติดตาม/วันที่จริงไว้ และไม่แจ้งว่า Detail ขาดเพียงเพราะไม่มีบริษัทขนส่ง
+- [ ] ตรวจว่าข้อมูลออเดอร์เก่าที่ `detail_missing_fields=shipping_carrier` อย่างเดียวไม่ถูกนับ/Repair ซ้ำ; แต่ไม่มีวันนำส่งจริงต้องยังเป็นงานค้างสำหรับ Completed orders
+- [ ] ตรวจ DB SQLite/MySQL, backup/rollback กับ staging copy ของผู้ใช้ และ manual sync/repair กับบัญชีที่ได้รับอนุญาตก่อน Production Acceptance
+- [ ] ห้ามแปล `shipping_carrier` จาก Seller API มาเป็นค่า Buyer API โดยไม่มีหลักฐานว่าผู้ซื้อได้รับข้อมูลนั้นจริง
+
+หลักฐาน Source และ Tests: [PAN v2.5.5 shipping policy](PAN-v2.5.5-SHIPPING-ACCEPTANCE.md) · [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37938489873). Live Shopee session ยังไม่ผ่านการตรวจรับ

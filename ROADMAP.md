@@ -1,15 +1,22 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-08 (Asia/Bangkok) · **PAN Core v2.5.3 + Shopee Connector v2.4.10** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.5 + Shopee Connector v2.4.12** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
+
+## อัปเดตด้านความถูกต้องของ UI — PAN 2.5.5
+
+- **เสร็จใน Source:** ถอดคอลัมน์/ตัวกรองและ Analytics ที่อ้างชื่อบริษัทขนส่ง โดยไม่ลบข้อมูลดิบเดิมของผู้ใช้; ช่องทางชำระเงินถูกถอดไว้ตั้งแต่ v2.5.4
+- **Repair:** ไม่มีชื่อบริษัทขนส่งไม่ทำให้ Detail กลายเป็น partial โดยตัวมันเอง; แยกหลักฐานวันนำส่งพัสดุจากชื่อบริษัทอย่างชัดเจน; รายการเก่าที่เหลือแต่รหัส/ชื่อที่ Buyer API ไม่ยืนยันไม่เข้า Repair ซ้ำโดยไม่จำเป็น
+- **หลักฐานโค้ด:** [commit dfa0b8a](https://github.com/herogamee/PAN/commit/dfa0b8ab9e207a4a54136a855b6b814b12d327b6) · [CI ผ่าน 5 งาน](https://github.com/herogamee/PAN/actions/runs/37938489873) · [Shipping acceptance policy](docs/PAN-v2.5.5-SHIPPING-ACCEPTANCE.md)
+- **ยังไม่ผ่าน Production Acceptance:** ต้องตรวจ Buyer API กับบัญชี Shopee จริง รวมถึงข้อมูลเดิม/Restore บน staging ก่อนใช้งานจริง ไม่ใช้ Seller Open Platform เป็นหลักฐานยืนยันสิทธิ์ Buyer API
 
 ## ศูนย์กลางติดตามงาน
 
 - [GitHub Issues — เปิดอยู่](https://github.com/herogamee/PAN/issues)
 - [Acceptance & Test Matrix](docs/ACCEPTANCE-MATRIX.md) — Test case, เกณฑ์ผ่าน, ผลจริง และหลักฐาน
 - [Staging Acceptance Runbook](docs/STAGING-ACCEPTANCE.md) — ขั้นตอนทดสอบ XAMPP3/Ubuntu และเก็บผลอย่างปลอดภัย
-- [PAN 2.5.3 Release Notes](RELEASE-NOTES-v2.5.3.md) — ขอบเขต release ล่าสุดและข้อจำกัด
+- [PAN 2.5.5 Release Notes](RELEASE-NOTES-v2.5.5.md) — ขอบเขต release ล่าสุดและข้อจำกัด
 - [GitHub CI](.github/workflows/ci.yml) — PHP lint, Shopee Extension regression, Server Connector regression
 
 ## สรุป 7 เฟส
@@ -17,7 +24,7 @@
 | เฟส / Issue | งาน | ความสำคัญ | สถานะ ณ วันที่อัปเดต | เงื่อนไขก่อนปิด |
 |---|---|---|---|---|
 | [1 — #1](https://github.com/herogamee/PAN/issues/1) | Production Acceptance & Data Integrity | **P0** | **Code/CI ผ่าน; Live/Staging ยังไม่ผ่านการตรวจรับ** | Shopee session จริง + SQLite/MySQL + safe recovery |
-| [2 — #2](https://github.com/herogamee/PAN/issues/2) | Payment / Shipping / Repair 3.0 | **P0** | **ทำบางส่วน** | แสดงค่าจริง/ว่างตรงตาม API; Repair state ตรงจริง |
+| [2 — #2](https://github.com/herogamee/PAN/issues/2) | Payment / Shipping / Repair 3.0 | **P0** | **ทำบางส่วน** | ซ่อนช่องทางชำระเงินและชื่อบริษัทขนส่งที่ Buyer API ไม่ยืนยัน; ตรวจวันรับพัสดุ/Repair จริง |
 | [3 — #3](https://github.com/herogamee/PAN/issues/3) | Product Explorer / Price Intelligence 3.0 | P1 | **มี Foundation แล้ว** | จับคู่/merge/split ปลอดภัย + filters/sorts ผ่าน |
 | [4 — #4](https://github.com/herogamee/PAN/issues/4) | Shopee Server Connector | P1 | **Experimental** | ผ่าน Windows/Ubuntu + persistent session + error isolation |
 | [5 — #5](https://github.com/herogamee/PAN/issues/5) | Multi-Marketplace Core | P1 | **ยังไม่เริ่ม Migration หลัก** | Composite identity, SQLite/MySQL migration/rollback |
