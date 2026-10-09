@@ -6,6 +6,7 @@
 require_once __DIR__.'/../app/db.php';
 require_once __DIR__.'/../app/migrate.php';
 require_once __DIR__.'/../app/sync_anchor.php';
+require_once __DIR__.'/../app/order_items_view.php';
 
 function test_check(bool $ok, string $label): void {
     if (!$ok) throw new RuntimeException('FAIL: '.$label);
@@ -81,6 +82,14 @@ try {
     $first=import_test($db,[fixture('CI-A1','CI-K1','CI-A'),fixture('CI-A1','CI-K2','CI-A')],'scan-a');
     test_check($first['inserted_orders']===1 && $first['pan_purchase_orders']===1,'new order counted once');
     test_check(count_rows($db,'order_items')===2,'multi-item order persisted');
+    $orderAId=(int)row_for($db,'CI-A1')['id'];
+    $pageLines=pan_order_items_for_page($db,[['id'=>$orderAId]]);
+    test_check(count($pageLines[$orderAId]??[])===2,'Order details load both product lines for the same Order');
+    test_check(array_column($pageLines[$orderAId],'product_name')===['Synthetic Item','Synthetic Item'],
+        'Order details preserve distinct product keys without merging lines');
+    test_check(pan_order_item_safe_url('javascript:alert(1)')===''&&pan_order_item_safe_url('data:text/html,x')==='' &&
+        pan_order_item_safe_url('https://shopee.co.th/item')==='https://shopee.co.th/item',
+        'Product link sanitizer accepts HTTPs and blocks script/data URL schemes');
     $again=import_test($db,[fixture('CI-A1','CI-K1','CI-A',2)],'scan-a2');
     test_check($again['updated_orders']===1 && $again['inserted_orders']===0,'idempotent upsert not double-counted');
     test_check(count_rows($db,'order_items')===1,'verified order snapshot reconciles stale item');
@@ -96,6 +105,19 @@ try {
     test_check(row_for($db,'CI-A2')===null,'invalid page cannot advance stored orders');
 
     import_test($db,[fixture('CI-B1','CI-K4','CI-B')],'scan-b');
+    $orderBId=(int)row_for($db,'CI-B1')['id'];
+    $pageA=pan_order_items_for_page($db,[['id'=>$orderAId]]);
+    test_check(count($pageA[$orderAId]??[])===1&&!array_key_exists($orderBId,$pageA),
+        'Paginated Order view cannot load unrelated order items');
+    $allPage=pan_order_items_for_page($db,[['id'=>$orderBId],['id'=>$orderAId],['id'=>$orderAId]]);
+    test_check(count($allPage[$orderBId]??[])===1&&count($allPage[$orderAId]??[])===1,
+        'Multiple Orders are grouped by order id; repeated IDs are deduplicated');
+    test_check(pan_order_items_for_page($db,[])===[]&&
+        pan_order_items_for_page($db,[['id'=>999999]])===[999999=>[]],
+        'Empty page and an Order without items render safely');
+    test_check(pan_order_item_unit_price($allPage[$orderAId][0])===15.5&&
+        pan_order_item_line_total($allPage[$orderAId][0])===31.0,
+        'Line-item quantity/price totals reflect the verified import, not guessed order totals');
     $db->exec("UPDATE orders SET order_date='2026-12-28',date_source='shipping.tracking_info.ctime',order_created_at='' WHERE order_no='CI-B1'");
     $anchor=recent_sync_anchor($db,'CI-B');
     test_check($anchor['latest_order_date']===''&&$anchor['cutoff_date']==='',

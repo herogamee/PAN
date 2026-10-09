@@ -26,3 +26,33 @@ img{max-width:100%;height:auto}
 @media(max-width:1180px){.filter-grid-primary{grid-template-columns:repeat(3,minmax(0,1fr))}.field-search{grid-column:span 2}.filter-grid-secondary{grid-template-columns:repeat(3,minmax(0,1fr))}.analytics-grid-3,.breakdown-grid{grid-template-columns:1fr 1fr}.analytics-kpis{grid-template-columns:repeat(3,1fr)}.copy-grid{grid-template-columns:1fr}}
 @media(max-width:820px){.page-hero{align-items:flex-start;flex-direction:column}.hero-badge{align-self:stretch;text-align:left}.filter-grid-primary,.filter-grid-secondary{grid-template-columns:repeat(2,minmax(0,1fr))}.field-search{grid-column:1/-1}.summary-strip,.analytics-kpis,.export-kpis{grid-template-columns:repeat(2,1fr)}.analytics-grid-2,.analytics-grid-3,.breakdown-grid,.export-grid{grid-template-columns:1fr}.table-topline{flex-direction:column}}
 @media(max-width:560px){.filter-grid-primary,.filter-grid-secondary,.summary-strip,.analytics-kpis,.export-kpis{grid-template-columns:1fr}.filter-card{padding:14px}.page-hero h1{font-size:24px}.modern-table td,.modern-table th{padding:9px 8px}}
+
+/* PAN v2.5.8 — expandable read-only item lines on Orders */
+.orders-table tr.order-master-row{cursor:pointer}
+.orders-table tr.order-master-row:hover,.orders-table tr.order-master-row.is-expanded{background:#fff6f2}
+.order-expand-button{display:inline-flex;align-items:center;gap:7px;text-align:left;padding:3px 0;border:0;background:transparent;color:#a63b20;font:inherit;font-weight:800;cursor:pointer;max-width:250px;overflow-wrap:anywhere;white-space:normal}
+.order-expand-button:focus-visible{outline:2px solid var(--brand,#ee4d2d);outline-offset:4px;border-radius:4px}
+.order-expand-chevron{display:inline-block;font-size:16px;color:#a6aab3;transition:transform .17s ease}
+.order-master-row.is-expanded .order-expand-chevron{transform:rotate(90deg);color:#ee4d2d}
+.orders-table tr.order-products-row[hidden]{display:none!important}
+.orders-table tr.order-products-row>td{padding:0!important;white-space:normal;background:#f8fafc;border-bottom:2px solid #e7e9ef}
+.order-products-detail{padding:15px 17px 17px;border-left:3px solid #ee4d2d;min-width:0}
+.order-products-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:11px}
+.order-products-head strong{display:block;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+.order-products-head small{display:block;font-size:11px;color:#787f8a;margin-top:3px}
+.order-products-source{color:#89919c;font-size:11px}
+.order-products-list{display:grid;gap:7px}
+.order-product-line{display:grid;grid-template-columns:56px minmax(170px,1fr) 58px minmax(100px,auto) minmax(110px,auto);gap:12px;align-items:center;padding:10px;background:white;border:1px solid #e9ebf0;border-radius:11px;min-width:0}
+.order-product-image,.order-product-placeholder{width:56px;height:56px;object-fit:cover;border-radius:9px;border:1px solid #eaedf1;background:#f4f6f8;display:grid;place-items:center;color:#c5c9d1;font-size:24px}
+.order-product-meta{min-width:0;overflow-wrap:anywhere}
+.order-product-name{display:block;font-size:12px;font-weight:750;color:#273041;line-height:1.45;white-space:normal}
+a.order-product-name:hover{color:#dc4a2a;text-decoration:underline}
+.order-product-variant{display:block;font-size:11px;color:#69717e;margin-top:4px;white-space:normal}
+.order-product-qty,.order-product-price,.order-product-line-total{text-align:right;white-space:nowrap}
+.order-product-qty small,.order-product-price small,.order-product-line-total small{display:block;color:#88909b;font-size:10px;margin-bottom:3px}
+.order-product-qty b,.order-product-price b,.order-product-line-total b{display:block;font-size:12px;color:#323a48}
+.order-product-line-total b{color:#078a61}
+.order-products-hint{font-size:11px;color:#747c89;margin:10px 0 0;line-height:1.55}
+.order-products-empty{margin:0;padding:16px;background:white;color:#69717e;border:1px dashed #d9dfe7;border-radius:8px;font-size:12px}
+@media(max-width:780px){.order-products-detail{padding:12px}.order-product-line{grid-template-columns:48px minmax(0,1fr) auto;gap:7px}.order-product-image,.order-product-placeholder{width:48px;height:48px}.order-product-qty{grid-column:3;grid-row:1}.order-product-price{grid-column:2;grid-row:2;text-align:left}.order-product-line-total{grid-column:3;grid-row:2}.order-product-line-total b,.order-product-price b{font-size:11px}}
+@media(prefers-reduced-motion:reduce){.order-expand-chevron{transition:none}}

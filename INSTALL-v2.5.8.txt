@@ -1,0 +1,8 @@
+PAN Core v2.5.8 + Shopee Connector v2.4.13 (unchanged)
+
+1. Before installing, back up PAN source, storage/config.php and the active database.
+2. Patch installation: use exact PAN v2.5.7 base, overlay the patch content under pan/, preserve runtime storage. Complete installation: stage pan/ separately, never remove the old DB/config.
+3. Confirm VERSION = 2.5.8; no new database migration and no Chrome Extension reload required.
+4. Visit ?page=orders and click an Order number or row. Check products, quantities and prices. The shop link must continue to navigate normally.
+5. Orders with no saved products should state that PAN has no product-line data; do not assume the original Shopee order was empty.
+6. PHP/Node/CI tests are synthetic and do not prove Production Shopee historical data accuracy; verify on a private staging copy before promotion.

@@ -8,6 +8,7 @@ require_once __DIR__.'/app/db.php';
 require_once __DIR__.'/app/analytics.php';
 require_once __DIR__.'/app/payment_method.php';
 require_once __DIR__.'/app/order_timeline.php';
+require_once __DIR__.'/app/order_items_view.php';
 $db=db(); ensure_hub_v02($db); $currentDbDriver=db_driver($db);
 $action=$_GET['action']??'';
 if($action==='mark_reviewed'&&$_SERVER['REQUEST_METHOD']==='POST'){$id=(int)($_POST['id']??0);if($id)$db->prepare('UPDATE order_items SET needs_review=0 WHERE id=?')->execute([$id]);header('Location: ./?page=collector');exit;}
@@ -172,6 +173,7 @@ if($page==='orders'){
   $st->bindValue(':off',$ordersOffset,PDO::PARAM_INT);
   $st->execute();
   $orders=$st->fetchAll();
+  $orderItemsByOrder=pan_order_items_for_page($db,$orders);
 }
 if($page==='shops'){
   $per=max(10,min(100,(int)($_GET['per']??25)));
@@ -266,7 +268,7 @@ if($page==='export'){
 <style>
 :root{--bg:#f7f8fb;--card:#fff;--text:#151820;--muted:#717784;--line:#e6e8ed;--brand:#ee4d2d;--brand-soft:#fff0ec;--green:#009b68;--red:#df3f32;--shadow:0 1px 2px rgba(20,24,32,.03)}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--text);font-size:14px}a{text-decoration:none;color:inherit}.layout{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}.sidebar{position:sticky;top:0;height:100vh;background:#fff;border-right:1px solid var(--line);padding:18px 14px;display:flex;flex-direction:column}.brand{display:flex;align-items:center;gap:9px;font-weight:800;padding:5px 8px 22px}.brand .bag{width:28px;height:28px;border-radius:7px;background:var(--brand);display:grid;place-items:center;color:#fff}.version{font-size:10px;background:var(--brand);color:#fff;padding:3px 5px;border-radius:5px;margin-left:auto}.nav a{display:flex;gap:10px;align-items:center;padding:10px 11px;border-radius:9px;color:#525866;margin:2px 0}.nav a:hover,.nav a.active{background:var(--brand-soft);color:var(--brand);font-weight:700}.nav .sep{height:1px;background:var(--line);margin:12px 5px}.collector-status{margin-top:auto;border:1px solid var(--line);border-radius:11px;padding:12px;font-size:12px}.collector-status b{color:var(--green)}.main{min-width:0;padding:26px 30px 50px}.content{width:min(1380px,100%);margin:0 auto}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}.title h1{font-size:22px;line-height:1.25;margin:0}.title p{font-size:12px;color:var(--muted);margin:5px 0 0}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:#fff;color:#252a34;border-radius:9px;padding:9px 13px;font-weight:700;cursor:pointer}.btn:hover{border-color:#c9cdd5}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}.panel{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px;box-shadow:var(--shadow)}.flash{margin-bottom:14px;background:#ecfdf5;border:1px solid #a7f3d0;color:#087557;border-radius:9px;padding:10px 12px}.toolbar{display:flex;gap:9px;align-items:center}.search{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:10px 12px;outline:none}.search:focus{border-color:#bfc5ce}.count{margin-left:auto;background:#f5f6f8;padding:7px 10px;border-radius:999px;color:#606675;font-size:12px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}.stat span{color:var(--muted);font-size:12px}.stat b{display:block;font-size:24px;margin-top:6px}.products-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}.product-card{display:grid;grid-template-columns:66px minmax(0,1fr);gap:11px;min-height:128px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;transition:.15s}.product-card:hover{border-color:#cbd0d9;box-shadow:0 5px 16px rgba(20,24,32,.05);transform:translateY(-1px)}.thumb{width:66px;height:66px;border:1px solid var(--line);border-radius:9px;object-fit:cover;background:#f2f3f5}.product-name{font-size:13px;font-weight:750;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.variant{font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pill{display:inline-block;margin-top:7px;padding:4px 7px;background:#fff0eb;color:#d64a2d;border-radius:999px;font-size:11px;font-weight:750}.price-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:1px}.price-box b{display:block;font-size:13px}.price-box small{display:block;color:var(--muted);font-size:10px;margin-top:2px}.green{color:var(--green)}.pagination{display:flex;align-items:center;justify-content:center;gap:5px;margin:14px 0 2px}.pagebtn{min-width:34px;height:32px;padding:0 8px;display:grid;place-items:center;border:1px solid var(--line);background:#fff;border-radius:8px;font-size:12px}.pagebtn.active{border-color:#171b23;font-weight:800}.ellipsis{padding:0 6px;color:var(--muted)}.hero{display:grid;grid-template-columns:84px minmax(0,1fr);gap:15px}.hero .thumb{width:84px;height:84px}.hero-title{font-size:20px;font-weight:800;line-height:1.25}.metrics{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-top:3px}.metric{border:1px solid var(--line);border-radius:10px;padding:11px}.metric small{color:var(--muted);font-size:11px}.metric b{display:block;font-size:17px;margin-top:4px}.tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin:16px 0 0}.tab{padding:10px 0;border-bottom:2px solid var(--brand);color:var(--brand);font-weight:750}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{padding:10px 9px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}th{color:#666d79;font-size:11px;font-weight:700}.neg{color:var(--red);font-weight:700}.net{color:var(--green);font-weight:800}.note{font-size:11px;color:#67707e;margin-top:10px;padding:9px 11px;background:#f7f8fa;border-radius:8px}.orders-table .order{font-weight:800}.muted{color:var(--muted)}.collector-list{display:grid;gap:8px}.collector-item{border:1px solid var(--line);border-radius:10px;padding:11px}.review{color:#a16207;background:#fffbeb;padding:3px 6px;border-radius:6px;font-size:11px}@media(max-width:1050px){.products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.metrics{grid-template-columns:repeat(3,1fr)}}@media(max-width:760px){.layout{grid-template-columns:1fr}.sidebar{display:none}.main{padding:18px 14px}.products-grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.metrics{grid-template-columns:repeat(2,1fr)}.toolbar{flex-wrap:wrap}.search{flex-basis:100%}}
 .timeline-note{display:block;margin-top:3px;color:#6b7280;font-size:11px;line-height:1.3;font-weight:400}.orders-table td{vertical-align:top}
-</style><link rel="stylesheet" href="./assets/dashboard.css?v=2.5.7"></head><body><div class="layout"><aside class="sidebar"><div class="brand"><span class="bag">I</span><span>PAN <small style="display:block;font-size:11px;font-weight:600;opacity:.72">น้องแพน · by itoom.work</small></span><span class="version">v2.5.6</span></div><nav class="nav">
+</style><link rel="stylesheet" href="./assets/dashboard.css?v=2.5.8"></head><body><div class="layout"><aside class="sidebar"><div class="brand"><span class="bag">I</span><span>PAN <small style="display:block;font-size:11px;font-weight:600;opacity:.72">น้องแพน · by itoom.work</small></span><span class="version">v2.5.8</span></div><nav class="nav">
 <a class="<?=$page==='dashboard'?'active':''?>" href="./">⌂ หน้าแรก</a><a class="<?=$page==='orders'?'active':''?>" href="?page=orders">▤ คำสั่งซื้อ</a><a class="<?=in_array($page,['products','product'])?'active':''?>" href="?page=products">◉ สินค้า / ประวัติราคา</a><a class="<?=$page==='shops'?'active':''?>" href="?page=shops">▦ ร้าน</a><a class="<?=$page==='analytics'?'active':''?>" href="?page=analytics">▥ สรุป / Analytics</a><a class="<?=$page==='export'?'active':''?>" href="?page=export">⇧ ส่งออกข้อมูล</a><a href="?page=collector" class="<?=$page==='collector'?'active':''?>">⇩ รายงาน / Collector</a><a href="?page=accounts" class="<?=($page==='accounts'?'active':'')?>">👥 บัญชีที่เคย Sync</a>
 <a class="<?=($page==='settings'?'active':'')?>" href="?page=settings"><span>⚙</span><span>ตั้งค่า / จัดการข้อมูล</span></a><div class="sep"></div><a href="./shopee.php"><span>↻</span><span>เชื่อม Shopee บนเซิร์ฟเวอร์</span></a><a href="./database.php"><span>◫</span><span>Database Manager</span></a><a href="./logout.php"><span>↪</span><span>ออกจากระบบ</span></a></nav><div class="collector-status">ฐานข้อมูล <b><?=strtoupper(h($currentDbDriver))?></b><br><span class="muted">Collector เชื่อมผ่าน API Key</span></div></aside><main class="main"><div class="content">
 <?php if($flash):?><div class="flash"><?=h($flash)?></div><?php endif;?>
@@ -431,7 +433,7 @@ if($page==='export'){
   <div>
     <div class="eyebrow">PURCHASE HISTORY</div>
     <h1>คำสั่งซื้อ</h1>
-    <p>กรองข้อมูลหลายเงื่อนไขพร้อมกัน ดูยอดรวมทันที และเปิดร้านจากผลลัพธ์ได้</p>
+    <p>กรองข้อมูลหลายเงื่อนไข กดที่เลข Order หรือแถวคำสั่งซื้อเพื่อดูสินค้าทั้งหมดได้ทันที</p>
   </div>
   <div class="hero-badge"><b><?=number_format($filteredOrderCount??0)?></b><span>Order ที่พบ</span></div>
 </div>
@@ -493,20 +495,50 @@ if($page==='export'){
   <div class="empty-state"><div class="empty-icon">⌕</div><h3>ไม่พบ Order ที่ตรงกับตัวกรอง</h3><p>ลองลดเงื่อนไข หรือตรวจ ‘ไม่ทราบวันสั่งซื้อ’ และ ‘PAN พบ/ซิงก์เดือนนี้’ ด้านบน เพราะข้อมูลอาจยังอยู่ในฐาน</p></div>
 <?php else:?>
   <div class="table-topline"><span>แสดง <?=number_format($ordersOffset+1)?>–<?=number_format(min($ordersOffset+$ordersPer,$filteredOrderCount))?> จาก <?=number_format($filteredOrderCount)?> Order</span><span>ยอดรวม <?=money($filteredPaid??0)?></span></div>
-  <div class="table-wrap"><table class="orders-table modern-table"><thead><tr><th title="วันที่สร้างคำสั่งซื้อ · เวลาแสดงเฉพาะเมื่อ Shopee มีเวลาจริง">วันที่สั่งซื้อ</th><th>Order</th><th>ร้าน</th><th class="num">ชิ้น</th><th class="num">ราคาหน้าร้าน</th><th class="num">ส่วนลด</th><th class="num">จ่ายจริง</th><th title="สถานะคำสั่งซื้อจาก Shopee ไม่ใช่หลักฐานวันที่ขนส่งนำส่งถึงผู้รับ">สถานะ</th><th>บัญชี</th><th>Detail</th></tr></thead><tbody>
-  <?php foreach($orders as $o):?><tr>
+  <div class="table-wrap"><table id="panOrdersTable" class="orders-table modern-table"><thead><tr><th title="วันที่สร้างคำสั่งซื้อ · เวลาแสดงเฉพาะเมื่อ Shopee มีเวลาจริง">วันที่สั่งซื้อ</th><th>Order</th><th>ร้าน</th><th class="num">ชิ้น</th><th class="num">ราคาหน้าร้าน</th><th class="num">ส่วนลด</th><th class="num">จ่ายจริง</th><th title="สถานะคำสั่งซื้อจาก Shopee ไม่ใช่หลักฐานวันที่ขนส่งนำส่งถึงผู้รับ">สถานะ</th><th>บัญชี</th><th>Detail</th></tr></thead><tbody>
+  <?php foreach($orders as $o):?><tr class="order-master-row" data-order-master="<?= (int)$o['id']?>" title="คลิกดูรายการสินค้าในคำสั่งซื้อนี้">
     <?php $placedView=pan_order_placed_view($o);?>
     <td title="<?=h($placedView['title'])?>"><b><?=h($placedView['value'])?></b><?php if($placedView['note']!==''):?><small class="timeline-note"><?=h($placedView['note'])?></small><?php endif;?></td>
     
-    <td class="order"><?=h($o['order_no'])?></td>
+    <td class="order"><button type="button" class="order-expand-button" aria-expanded="false" aria-controls="pan-order-lines-<?=(int)$o['id']?>" aria-label="ดูสินค้าทั้งหมดในคำสั่งซื้อ <?=h($o['order_no'])?>"><span class="order-expand-chevron" aria-hidden="true">▸</span><span><?=h($o['order_no'])?></span></button></td>
     <td><a class="shop-link" href="?page=orders&shop=<?=rawurlencode((string)$o['shop_name'])?>"><?=h($o['shop_name'])?></a></td>
     <td class="num"><?=number_format((int)$o['qty'])?></td><td class="num"><?=money($o['raw_subtotal']?:$o['subtotal'])?></td><td class="num neg"><?=(float)$o['discount_total']>0?'-'.money($o['discount_total']):money(0)?></td><td class="num"><b><?=money($o['total_paid'])?></b></td>
     <td><span class="status-chip status-<?=h((string)($o['list_type']??0))?>"><?=h(order_status_th($o['order_status']??'', $o['list_type']??null))?></span><?php if(($o['validation_state']??'')==='not_seen_full_scan'):?><small class="timeline-note" title="ประวัติถูกทำเครื่องหมายใน Full Sync รุ่นเก่า ออเดอร์ยังอยู่ ไม่ใช่หลักฐานว่าถูกยกเลิก">⚠ ไม่พบใน Full Sync ก่อนหน้า</small><?php endif;?></td>
     <td><?=h($o['source_account_username']?:$o['source_account_id'])?></td>
     <td><?php $ds=detail_state_label($o);if($ds==='ตรวจแล้ว'):?><span class="ok-chip">✓ ตรวจ Detail แล้ว</span><?php elseif($ds==='บางส่วน'):?><span class="pending-chip">Detail บางส่วน</span><?php elseif($ds==='ผิดพลาด'):?><span class="pending-chip">Detail ผิดพลาด</span><?php else:?><span class="pending-chip">รอเติม Detail</span><?php endif;?></td>
-  </tr><?php endforeach;?></tbody></table></div>
+  </tr>
+  <tr id="pan-order-lines-<?=(int)$o['id']?>" class="order-products-row" hidden>
+    <td colspan="10">
+      <?php $lines=$orderItemsByOrder[(int)$o['id']]??[];$totalQty=0;foreach($lines as $line){$totalQty+=max(0,(int)($line['quantity']??0));}?>
+      <section class="order-products-detail" role="region" aria-label="สินค้าที่สั่งในคำสั่งซื้อ <?=h($o['order_no'])?>">
+        <div class="order-products-head"><div><strong>สินค้าทั้งหมดในคำสั่งซื้อ <?=h($o['order_no'])?></strong><small><?=number_format(count($lines))?> รายการ · <?=number_format($totalQty)?> ชิ้น</small></div><span class="order-products-source">ข้อมูลจาก PAN ตามการซิงก์ล่าสุด</span></div>
+        <?php if(!$lines):?>
+          <p class="order-products-empty">ยังไม่มีข้อมูลสินค้าในคำสั่งซื้อนี้ที่ PAN เก็บไว้ ไม่ได้หมายความว่าไม่มีการสั่งซื้อจริง</p>
+        <?php else:?>
+          <div class="order-products-list">
+          <?php foreach($lines as $item):?>
+            <?php $image=pan_order_item_safe_url((string)($item['image_url']??''));$productUrl=pan_order_item_safe_url((string)($item['product_url']??''));$quantity=max(0,(int)($item['quantity']??0));?>
+            <div class="order-product-line">
+              <?php if($image!==''):?><img class="order-product-image" src="<?=h($image)?>" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"><?php else:?><span class="order-product-placeholder" aria-hidden="true">▣</span><?php endif;?>
+              <div class="order-product-meta">
+                <?php if($productUrl!==''):?><a class="order-product-name" href="<?=h($productUrl)?>" target="_blank" rel="noopener noreferrer"><?=h($item['product_name']??'ไม่ระบุชื่อสินค้า')?></a><?php else:?><span class="order-product-name"><?=h($item['product_name']??'ไม่ระบุชื่อสินค้า')?></span><?php endif;?>
+                <?php if(trim((string)($item['variant_name']??''))!==''):?><span class="order-product-variant">ตัวเลือก: <?=h($item['variant_name'])?></span><?php endif;?>
+              </div>
+              <div class="order-product-qty"><small>จำนวน</small><b><?=number_format($quantity)?></b></div>
+              <div class="order-product-price"><small>ราคาต่อชิ้น</small><b><?=money(pan_order_item_unit_price($item))?></b></div>
+              <div class="order-product-line-total"><small>มูลค่ารายการ</small><b><?=money(pan_order_item_line_total($item))?></b></div>
+            </div>
+          <?php endforeach;?>
+          </div>
+          <p class="order-products-hint">มูลค่ารายการสินค้าอาจไม่เท่ากับยอดจ่ายจริงของ Order เพราะค่าจัดส่ง คูปอง และส่วนลดอื่น ๆ</p>
+        <?php endif;?>
+      </section>
+    </td>
+  </tr>
+  <?php endforeach;?></tbody></table></div>
   <?php if(($ordersPages??1)>1):?><?php $oq=$_GET;$oq['page']='orders';unset($oq['p']);$pageUrl=function(int $n)use($oq){$q2=$oq;$q2['p']=$n;return '?'.http_build_query($q2);};$from=max(1,$ordersPage-2);$to=min($ordersPages,$ordersPage+2);?><div class="pagination"><?php if($ordersPage>1):?><a class="pagebtn" href="<?=h($pageUrl($ordersPage-1))?>">‹</a><?php endif;?><?php if($from>1):?><a class="pagebtn" href="<?=h($pageUrl(1))?>">1</a><?php if($from>2):?><span class="ellipsis">…</span><?php endif;?><?php endif;?><?php for($n=$from;$n<=$to;$n++):?><a class="pagebtn <?=$n===$ordersPage?'active':''?>" href="<?=h($pageUrl($n))?>"><?=$n?></a><?php endfor;?><?php if($to<$ordersPages):?><?php if($to<$ordersPages-1):?><span class="ellipsis">…</span><?php endif;?><a class="pagebtn" href="<?=h($pageUrl($ordersPages))?>"><?=$ordersPages?></a><?php endif;?><?php if($ordersPage<$ordersPages):?><a class="pagebtn" href="<?=h($pageUrl($ordersPage+1))?>">›</a><?php endif;?></div><?php endif;?>
 <?php endif;?></div>
+<script defer src="./assets/orders.js?v=2.5.8"></script>
 
 <?php elseif($page==='shops'):?>
 <div class="top">

@@ -19,6 +19,8 @@ jobs:
         run: |
           php tests/order-timeline.php
           php tests/order-ui.php
+      - name: Render synthetic multi-item and empty order panels securely
+        run: php tests/orders-panel-render.php
       - name: Historical order visibility, October date filtering and safe observation sort (SQLite)
         run: python3 tests/visibility-sql.py
       - name: Legacy payment-method raw-value regression
@@ -81,6 +83,8 @@ jobs:
           node-version: '22'
       - name: Shopee Extension regression
         run: node --test connectors/shopee-extension/test/*.test.mjs
+      - name: Orders expand/collapse click regression
+        run: node --test tests/orders-browser.test.mjs
   server-connector-regression:
     runs-on: ubuntu-latest
     defaults:

@@ -37,3 +37,18 @@ foreach($checks as $label=>$pass){
     if(!$pass)throw new RuntimeException('FAIL '.$label);
     echo 'PASS '.$label."\n";
 }
+
+$expanderChecks=[
+    'all orders read-only page-scoped batch lookup' => str_contains($orders,'pan_order_items_for_page($db,$orders)') && !str_contains($orders,'?action=load_order_items'),
+    'order number has a keyboard-operable button' => str_contains($orders,'class="order-expand-button"') && str_contains($orders,'aria-expanded="false"'),
+    'detail association by stable order ID' => str_contains($orders,'aria-controls="pan-order-lines-') && str_contains($orders,'id="pan-order-lines-'),
+    'detail display includes each item and optional variants' => str_contains($orders,'foreach($lines as $item)') && str_contains($orders,'variant_name'),
+    'detail panels not initially visible' => str_contains($orders,'class="order-products-row" hidden'),
+    'order product links escape URL and have noopener' => str_contains($orders,'rel="noopener noreferrer"') && str_contains($orders,'pan_order_item_safe_url('),
+    'product detail uses local JS asset and no buyer API fetch' => str_contains($orders,'assets/orders.js?v=2.5.8') && is_file($root.'/assets/orders.js'),
+    'all ten original summary columns are retained' => str_contains($orders,'colspan="10"'),
+];
+foreach($expanderChecks as $label=>$passed){
+    if(!$passed)throw new RuntimeException('FAIL '.$label);
+    echo 'PASS '.$label."\n";
+}
