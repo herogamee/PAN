@@ -299,7 +299,7 @@ test('v2.4.8 detail parser reads nested payment and logistics labels and records
   assert.equal(meta.detail_missing_fields,'');
 });
 
-test('buyer shipping carrier name is optional, but tracking and verified delivery remain intact',async()=>{
+test('missing buyer carrier and received timestamp never trigger repeat Detail; tracking/raw metadata kept',async()=>{
   const f=await fixture();
   const delivered=Math.floor(Date.parse('2026-10-08T14:00:00+07:00')/1000);
   const meta=f.ctx.detailMeta({data:{info_card:{list_type:3},shipping:{tracking_info:{tracking_number:'SYNTHETIC-TRACK',delivered_time:delivered}}}});
@@ -309,7 +309,7 @@ test('buyer shipping carrier name is optional, but tracking and verified deliver
   assert.equal(meta.detail_missing_fields,'');
   assert.equal(JSON.parse(meta.metadata_json).sources.carrier,'');
   const incomplete=f.ctx.detailMeta({data:{info_card:{list_type:3},shipping:{tracking_info:{tracking_number:'SYNTHETIC-TRACK'}}}});
-  assert.equal(incomplete.detail_missing_fields,'delivered_at');
+  assert.equal(incomplete.detail_missing_fields,'');
   const transit=f.ctx.detailMeta({data:{info_card:{list_type:7},shipping:{tracking_info:{tracking_number:'SYNTHETIC-TRACK'}}}});
   assert.equal(transit.detail_missing_fields,'');
 });
@@ -399,7 +399,7 @@ test('order Complete, shipping ETA and hub received time are not buyer delivery'
   assert.equal(meta.delivery_date_source,'');
 });
 
-test('explicit courier delivered timestamp is accepted separately from order Complete',async()=>{
+test('raw delivered-like timestamps remain metadata only, never required for Detail completeness',async()=>{
   const f=await fixture();
   const delivery=Math.floor(Date.parse('2026-09-17T13:19:20+07:00')/1000);
   const complete=Math.floor(Date.parse('2026-09-18T10:10:10+07:00')/1000);
@@ -407,4 +407,5 @@ test('explicit courier delivered timestamp is accepted separately from order Com
   assert.equal(meta.delivered_at,'2026-09-17 13:19:20');
   assert.equal(meta.completed_at,'2026-09-18 10:10:10');
   assert.equal(meta.delivery_date_source,'detail.shipping.tracking_info.delivered_time');
+  assert.equal(meta.detail_missing_fields,'');
 });

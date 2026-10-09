@@ -1,0 +1,13 @@
+PAN v2.5.6 Complete — Shopee Connector v2.4.13
+
+1. Back up the current PAN tree, live storage/config.php, database and Chromium/Shopee profiles. Confirm private restore is possible.
+2. To upgrade an EXACT PAN 2.5.5 baseline, apply the v2.5.5-to-v2.5.6 Patch. Do not use a different baseline or copy mixed old templates.
+3. For new source installations, extract the Complete ZIP with top-level directory `pan/` (Windows XAMPP3 example: C:\xampp3\htdocs\pan\).
+4. Preserve live storage/config.php and DB/WAL; Complete and Patch exclude those runtime files. No schema migration is required.
+5. Reload Chrome unpacked PAN — Shopee Connector v2.4.13 and check core VERSION = 2.5.6, connector manifest = 2.4.13.
+6. Orders will no longer show a received-delivery date. Purchase date and order status are unaffected.
+7. Detail will not enter Repair solely because Buyer API does not return an accepted parcel-delivered timestamp. Other errors still require Repair. Raw historical delivery columns remain in DB, but are not published as verified facts.
+8. Run PHP lint, Node extension regression and disposable PDO DB integration (GitHub CI). Real Shopee buyer API/date acceptance remains NOT VERIFIED; do not declare production acceptance before staging checks.
+9. Do not copy credentials, cookies, OTP, sessions, real DB dumps or buyer information to a public GitHub repository.
+
+Rollback: restore complete source + matching backed-up runtime config/database together; reload the prior extension. Never roll back only selected PHP files with a newer Connector.

@@ -114,51 +114,48 @@ try {
     $none=delete_cancelled_orders($db,'CI-A',['CI-B1']);
     test_check($none['deleted']===0 && row_for($db,'CI-B1')!==null,'Cancellation cannot delete other account order');
 
-    $partial=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00',
-        'delivered_at'=>'','delivery_date_source'=>'']);
-    test_check($partial['detail_state']==='partial' && in_array('delivered_at',$partial['missing_fields'],true),
-        'order Complete without courier delivered event is partial, not received');
-    $ambiguous=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-02 10:00:00',
-        'delivered_at'=>'2026-10-01 18:00:00','delivery_date_source'=>'detail.shipping.delivery_time']);
-    test_check($ambiguous['detail_state']==='partial' && pan_delivery_view(row_for($db,'CI-A1'))['value']!=='2026-10-01 18:00:00',
-        'ambiguous legacy delivery_time is never accepted as actual receipt');
-    // Historic records whose old detail_state says complete must still be eligible for recheck.
-    $db->exec("UPDATE orders SET detail_state='complete' WHERE order_no='CI-A1'");
-    $legacyQueue=repair_queue($db,'CI-A',10,false,false,0);
-    test_check($legacyQueue['total']===1 && $legacyQueue['rows'][0]['order_no']==='CI-A1',
-        'legacy Complete and ambiguous delivery source remain in manual Repair queue');
-    $complete=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'payment_method'=>'Card','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-03 10:00:00',
-        'delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
-    test_check($complete['detail_state']==='complete' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
-        'verified courier-delivered timestamp closes delivery-detail requirement');
-    $numeric=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'payment_method'=>'92','shipping_carrier'=>'Synthetic Carrier','completed_at'=>'2026-10-03 10:00:00',
-        'delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
-    test_check($numeric['detail_state']==='complete' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
-        'unused numeric payment code no longer forces endless Repair');
-    // A missing buyer carrier must never keep a successfully delivered order in Repair forever.
-    $noCarrier=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'shipping_carrier'=>'','completed_at'=>'2026-10-03 10:00:00',
-        'delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
-    test_check($noCarrier['detail_state']==='complete' && !in_array('shipping_carrier',$noCarrier['missing_fields'],true),
-        'missing carrier alone does not reduce Detail completeness');
-    test_check(row_for($db,'CI-A1')['shipping_carrier']==='Synthetic Carrier',
-        'missing carrier response preserves previously stored raw carrier value');
-    $db->exec("UPDATE orders SET detail_state='partial',detail_missing_fields='shipping_carrier' WHERE order_no='CI-A1'");
+    // Buyer API has no accepted courier-delivered contract; successful Detail fetch
+    // is complete regardless of absence of delivered_at, carrier, or payment labels.
+    $detail=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'payment_method'=>'92','shipping_carrier'=>'',
+        'completed_at'=>'2026-10-02 10:00:00','delivered_at'=>'','delivery_date_source'=>'']);
+    test_check($detail['detail_state']==='complete' && $detail['missing_fields']===[],
+        'missing Buyer delivery date is not a Detail failure');
     test_check(repair_queue($db,'CI-A',10,false,false,0)['total']===0,
-        'legacy carrier-only partial row cannot cause endless automatic/manual queue retries');
-    test_check((int)$db->query("SELECT COUNT(*) FROM orders WHERE source_account_id='CI-A' AND ".pan_repair_required_sql())->fetchColumn()===0,
-        'API status backlog and Repair queue share the same obsolete-carrier filter');
-    test_check(pan_optional_only_missing_fields('shipping_carrier,payment_method') && !pan_optional_only_missing_fields('shipping_carrier,delivered_at'),
-        'optional-only historic flags are recognized without ignoring missing delivery proof');
-    // New enrichment replaces the stale partial-only metadata when verified delivery exists.
-    $repaired=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
-        'shipping_carrier'=>'','delivered_at'=>'2026-10-02 16:08:55','delivery_date_source'=>'detail.shipping.tracking_info.delivered_time']);
-    test_check($repaired['detail_state']==='complete' && row_for($db,'CI-A1')['detail_missing_fields']==='',
-        'repair migrates stale carrier-only coverage without touching historical order data');
+        'completed Order without delivery timestamp does not loop Repair');
+    $ambiguous=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'delivered_at'=>'2026-10-01 18:00:00','delivery_date_source'=>'detail.shipping.delivery_time']);
+    test_check($ambiguous['detail_state']==='complete' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
+        'unverified raw delivery time does not become an acceptance/retry requirement');
+    test_check(row_for($db,'CI-A1')['delivered_at']==='2026-10-01 18:00:00',
+        'raw historical timestamp stays available without being displayed');
+    // Old variants can have stale delivery-specific missing flags and a partial
+    // state; do not require users to fetch a non-contractual field again.
+    foreach(['delivered_at','shipping_carrier,delivered_at','delivered_at,payment_method,shipping_carrier'] as $fieldSet){
+        $s=$db->prepare("UPDATE orders SET detail_state='partial',detail_missing_fields=? WHERE order_no='CI-A1'");
+        $s->execute([$fieldSet]);
+        test_check(repair_queue($db,'CI-A',10,false,false,0)['total']===0,
+            'obsolete Detail partial flag skipped: '.$fieldSet);
+        test_check((int)$db->query("SELECT COUNT(*) FROM orders WHERE source_account_id='CI-A' AND ".pan_repair_required_sql())->fetchColumn()===0,
+            'API status pending count matches Repair queue: '.$fieldSet);
+    }
+    // Unknown genuine problems and unfinished detail fetches remain retryable.
+    $db->exec("UPDATE orders SET detail_state='partial',detail_missing_fields='tracking_number' WHERE order_no='CI-A1'");
+    test_check(repair_queue($db,'CI-A',10,false,false,0)['total']===1,
+        'non-retired missing field still requires Repair');
+    $db->exec("UPDATE orders SET detail_state='error',detail_error='fixture' WHERE order_no='CI-A1'");
+    test_check(repair_queue($db,'CI-A',10,false,false,0)['total']===1,
+        'failed detail fetch still requires Repair');
+    $complete=enrich_order_payload($db,['order_no'=>'CI-A1','source_account_id'=>'CI-A',
+        'shipping_carrier'=>'','delivered_at'=>'','delivery_date_source'=>'','detail_error'=>'']);
+    $saved=row_for($db,'CI-A1');
+    test_check($complete['detail_state']==='complete' && $saved['detail_missing_fields']==='' && repair_queue($db,'CI-A',10,false,false,0)['total']===0,
+        'successful new Detail fetch clears old legacy flags');
+    test_check($saved['delivered_at']==='2026-10-01 18:00:00' && $saved['delivery_date_source']==='detail.shipping.delivery_time',
+        'blank optional raw delivery data cannot erase historical source');
+    test_check(repair_queue($db,'CI-A',10,false,true,0)['total']>=1,
+        'explicit advanced all-detail still supports user-requested recheck');
+    test_check(row_for($db,'CI-B1')!==null,'other-account orders are untouched by Repair behavior');
     $placedSql=pan_order_placed_sql();
     $db->exec("UPDATE orders SET order_created_at='',order_date='2026-10-04',date_source='shipping.tracking_info.ctime' WHERE order_no='CI-A1'");
     $when=$db->query("SELECT $placedSql placed FROM orders WHERE order_no='CI-A1'")->fetchColumn();

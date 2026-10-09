@@ -10,9 +10,11 @@ check_carrier(pan_optional_only_missing_fields('shipping_carrier'),'carrier alon
 check_carrier(pan_optional_only_missing_fields('payment_method,shipping_carrier'),'obsolete payment and carrier together are optional');
 check_carrier(pan_optional_only_missing_fields(' SHIPPING_CARRIER , payment_method '),'case/whitespace do not change optional meaning');
 check_carrier(!pan_optional_only_missing_fields(''),'empty missing fields is not a legacy partial-marker');
-check_carrier(!pan_optional_only_missing_fields('shipping_carrier,delivered_at'),'missing courier evidence is never optional');
-check_carrier(!pan_optional_only_missing_fields('tracking_number'),'tracking evidence is not silently ignored');
+check_carrier(pan_optional_only_missing_fields('delivered_at'),'retired received-date flag alone is optional');
+check_carrier(pan_optional_only_missing_fields('shipping_carrier,delivered_at,payment_method'),'all retired Buyer fields are optional');
+check_carrier(pan_optional_only_missing_fields('DELIVERED_AT, shipping_carrier'),'case and spaces do not alter retired fields');
+check_carrier(!pan_optional_only_missing_fields('tracking_number'),'other missing information still needs Repair');
 $sql=pan_repair_required_sql('o');
-check_carrier(str_contains($sql,'o.delivered_at')&&str_contains($sql,'o.detail_missing_fields'),'Repair SQL account alias supports verified courier evidence and carrier exclusion');
-check_carrier(str_contains($sql,"'shipping_carrier'")&&str_contains($sql,"'partial'"),'Repair SQL excludes carrier-only partial but retains genuine partial');
-echo "CARRIER REPAIR POLICY PASS\n";
+check_carrier(!str_contains($sql,'o.delivered_at')&&!str_contains($sql,'o.delivery_date_source'),'no received-date hard requirement in Repair');
+check_carrier(str_contains($sql,'o.detail_missing_fields')&&str_contains($sql,"'delivered_at'")&&str_contains($sql,"'partial'"),'SQL ignores delivery-only legacy partial state');
+echo "RETIRED BUYER FIELD REPAIR POLICY PASS\n";

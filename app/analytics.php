@@ -88,12 +88,12 @@ function analytics_snapshot(PDO $db): array {
     $dowLabels=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
     foreach($weekdays as &$r){$r['label']=$dowLabels[(int)$r['dow']]??'ไม่ทราบ';$r['orders']=(int)$r['orders'];$r['spent']=(float)$r['spent'];}unset($r);
 
+    // Date-source statistics reflect order creation only. Never categorize by
+    // delivered_at or completed_at, which are different, unverified events.
     $dateSources=analytics_rows($db,"SELECT
-      SUM(CASE WHEN COALESCE(delivered_at,'')<>'' THEN 1 ELSE 0 END) delivered,
-      SUM(CASE WHEN COALESCE(delivered_at,'')='' AND COALESCE(completed_at,'')<>'' THEN 1 ELSE 0 END) completed,
-      SUM(CASE WHEN COALESCE(delivered_at,'')='' AND COALESCE(completed_at,'')='' AND COALESCE(order_created_at,'')<>'' THEN 1 ELSE 0 END) created,
-      SUM(CASE WHEN COALESCE(delivered_at,'')='' AND COALESCE(completed_at,'')='' AND COALESCE(order_created_at,'')='' AND COALESCE(order_date,'')<>'' THEN 1 ELSE 0 END) order_date,
-      SUM(CASE WHEN COALESCE(delivered_at,'')='' AND COALESCE(completed_at,'')='' AND COALESCE(order_created_at,'')='' AND COALESCE(order_date,'')='' THEN 1 ELSE 0 END) unknown
+      SUM(CASE WHEN TRIM(COALESCE(order_created_at,''))<>'' THEN 1 ELSE 0 END) created,
+      SUM(CASE WHEN TRIM(COALESCE(order_created_at,''))='' AND $dateExpr IS NOT NULL THEN 1 ELSE 0 END) order_date,
+      SUM(CASE WHEN $dateExpr IS NULL THEN 1 ELSE 0 END) unknown
       FROM orders WHERE $purchase")[0]??[];
     foreach($dateSources as $k=>$v)$dateSources[$k]=(int)$v;
 

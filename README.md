@@ -1,4 +1,4 @@
-# PAN 2.5.5 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.6 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -12,7 +12,20 @@
 
 ## Roadmap และงานที่ค้าง
 
-แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.5 + Shopee Connector v2.4.12 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
+แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.6 + Shopee Connector v2.4.13 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
+
+## PAN 2.5.6 — ถอดวันที่ได้รับพัสดุที่ Buyer API ยังยืนยันไม่ได้
+
+**สถานะข้อมูลจริง:** PAN ดึงผ่าน `/api/v4/order/get_order_detail` ในเซสชันผู้ซื้อ แต่ยังไม่มีผลตรวจรับจาก Shopee Buyer API จริงว่าให้เวลาที่ขนส่งนำส่งถึงผู้รับอย่างน่าเชื่อถือได้. การพบชื่อฟิลด์ `delivered_time` ใน fixture ไม่ใช่สัญญา API หรือหลักฐานการนำส่ง. เราจึง **ถอดการแสดงวันที่ได้รับพัสดุออก** ตามที่ตกลง ไม่เดาจาก Order Complete หรือวันร้านส่ง
+
+- หน้า **Orders:** ไม่มีคอลัมน์วันที่ได้รับพัสดุอีกต่อไป; วันที่สั่งซื้อยังแสดงตามแหล่งสร้างออเดอร์จริง
+- หน้า **Analytics:** เหลือการวิเคราะห์แหล่งวันที่สั่งซื้อเท่านั้น; ไม่แสดงตัวนับ `delivered_at` / `completed_at` ในกลุ่มสถิติวันรับพัสดุ
+- **Detail/Repair:** ขาดวันรับพัสดุ ไม่ถือว่า Detail ยังไม่ครบ. ค่า legacy `detail_missing_fields=delivered_at` (รวมกับ payment/carrier) ไม่สร้างคิว Repair ซ้ำ; ข้อผิดพลาดจริงและ Detail ที่ยังไม่ถูกอ่านยังคงเข้าคิวได้
+- **ข้อมูลไม่สูญหาย:** คงฟิลด์ `delivered_at`, `delivery_date_source`, `completed_at`, `tracking_number` และ metadata ที่มีอยู่ในฐานข้อมูลเดิมเพื่อการตรวจสอบในอนาคต ไม่เปลี่ยน schema/ลบออเดอร์. ไม่ส่งต่อข้อมูลดิบเป็นวันรับพัสดุที่ยืนยันแล้ว
+- เปลี่ยนข้อความ **Detail ครบ** เป็น **ตรวจ Detail แล้ว** เพื่อไม่ให้ดูเหมือนยืนยันฟิลด์ที่ API ไม่ได้ให้
+- เวอร์ชัน **PAN Core 2.5.6 + Shopee Connector 2.4.13**: [Release Notes](RELEASE-NOTES-v2.5.6.md) · [Acceptance policy](docs/PAN-v2.5.6-DELIVERY-FIELD-RETIREMENT.md) · [Phase 2](https://github.com/herogamee/PAN/issues/2)
+
+**ยังไม่ผ่าน Production Acceptance**: ต้องลองอัปเกรดกับสำเนาฐานข้อมูลจริงใน staging และทดสอบ Shopee ที่ได้รับอนุญาต; synthetic CI ไม่ยืนยันความพร้อมของ Buyer API หรือข้อมูลวันรับพัสดุจริง
 
 Shopee เป็นเพียง Connector ตัวแรกของ PAN ไม่ใช่ชื่อของระบบหลัก เพื่อให้ในอนาคตเพิ่ม Lazada, TikTok Shop, LINE Shopping หรือ Marketplace อื่นได้โดยไม่ต้องเปลี่ยนชื่อโปรเจกต์อีก
 
@@ -74,13 +87,13 @@ Core v2.5.2 ยกระดับความปลอดภัยของก�
 - ถอดคอลัมน์ **ขนส่ง** และตัวกรอง **บริษัทขนส่ง** ออกจากหน้า Orders รวมถึงกราฟ/ตารางสรุปใน Analytics เพื่อไม่เผยแพร่ข้อมูลที่ไม่มีแหล่งที่มายืนยัน
 - API ที่ PAN ใช้คือ Shopee **Buyer Web API** (`/api/v4/order/get_order_detail`) ซึ่งยังไม่มีสัญญาฟิลด์ชื่อบริษัทขนส่งที่ยืนยันได้; Seller Open Platform API เป็นคนละบริบท/สิทธิ์
 - **เก็บ `shipping_carrier` ดิบเดิมในฐาน** และยังดึงข้อมูล track/delivered เท่าที่มีจริง ไม่ลบออเดอร์และไม่เปลี่ยนหลักการรับพัสดุใน v2.5.4
-- ข้อมูล carrier ที่ไม่ปรากฏ **ไม่ลด Detail coverage** หรือทำให้ออเดอร์ติดคิว Repair ซ้ำ เมื่อหลักฐานวันรับพัสดุครบตามสถานะ; แก้จำนวน pending ให้ตรงกับคิวจริง
+- ข้อมูล carrier ที่ไม่ปรากฏ **ไม่ลด Detail coverage** หรือทำให้ออเดอร์ติดคิว Repair ซ้ำ; ตั้งแต่ v2.5.6 วันรับพัสดุที่ยังไม่ตรวจรับก็ไม่ใช่เงื่อนไข Repair อีกต่อไป
 - รายการเก่าที่ `detail_missing_fields` มีเพียง `shipping_carrier`/`payment_method` ถูกละเว้นจากคิว Repair โดยไม่เขียนทับข้อมูลเดิม
 - [Release Notes v2.5.5](RELEASE-NOTES-v2.5.5.md) · [Shipping Acceptance Policy](docs/PAN-v2.5.5-SHIPPING-ACCEPTANCE.md) · [Phase 2](https://github.com/herogamee/PAN/issues/2)
 
 **Live Shopee buyer API ยังไม่ได้ทดสอบกับบัญชีจริง:** คอลัมน์จะกลับมาได้ก็ต่อเมื่อมีหลักฐานจากข้อมูลที่ได้รับอนุญาตและมีความสม่ำเสมอเท่านั้น
 
-## PAN 2.5.4 — วันที่สั่งซื้อ / วันที่ได้รับพัสดุ
+## PAN 2.5.4 — ประวัติงานวันที่สั่งซื้อ / วันที่ได้รับพัสดุ (ภายหลังถอดวันรับใน 2.5.6)
 
 - **ถอดช่องทางชำระเงิน** ออกจากตาราง Orders ตัวกรอง และกราฟ Analytics โดยไม่ลบค่าดิบ/ข้อมูลเก่าในฐาน
 - **วันที่สั่งซื้อ** ยึดเวลาสร้าง Order จริงเท่านั้น ถ้ามีเพียงวันที่แสดงว่า Shopee ไม่ระบุเวลา และไม่ใช้วันจ่ายเงิน/ส่งพัสดุ/Complete แทน
@@ -307,7 +320,7 @@ PAN
 
 ---
 
-Version: **PAN 2.5.5**  
+Version: **PAN 2.5.6**  
 Character: **น้องแพน**  
 Role: **Marketplace & Commerce Assistant**  
 Brand: **itoom.work**
