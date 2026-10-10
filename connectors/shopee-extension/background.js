@@ -1,5 +1,5 @@
 const DEFAULT_HUB='https://pan.itoom.work';
-const VERSION='2.4.16';
+const VERSION='2.4.17';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const txt=v=>v==null?'':String(v);
 const num=v=>{const n=Number(v);if(!Number.isFinite(n))return 0;return Math.abs(n)>=100000?n/100000:n};
@@ -352,9 +352,11 @@ function buyerDetailItemCandidate(json,listRecord,account){
       }
     }
     if(!Array.isArray(cards)||!cards.length)continue;
-    const record={...base,...v,list_type:Number(base.list_type??v.list_type),
-      info_card:{...baseInfo,...info,order_id:expected||reported,
-        order_list_cards:cards}};
+    // The list product_count is not authoritative for independent Buyer Detail.
+    const detailInfo={...baseInfo,...info,order_id:expected||reported,order_list_cards:cards};
+    if(info.product_count===undefined&&v.product_count===undefined)delete detailInfo.product_count;
+    else if(info.product_count===undefined)detailInfo.product_count=v.product_count;
+    const record={...base,...v,list_type:Number(base.list_type??v.list_type),info_card:detailInfo};
     // Metadata from the same response may have no recognized order timestamp;
     // preserve the known order-creation value from the list instead.
     const dt=extractBestListDate(record)||extractBestListDate(base);
@@ -554,6 +556,8 @@ async function processSyncRecords(raw,account,hub,scanId,pageUrl,seenOrderNos=[]
   // Each valid Order can be committed, but bad Orders remain in a persistent
   // local retry ledger. The caller saves pending+checkpoint in the same state
   // update; a crash before that update only causes a safe re-import of the page.
+  if(options.autoEnrich&&options.tabId&&String((await accountForTab(options.tabId)).userid)!==String(account.userid))
+    throw new Error('SESSION_BLOCK Shopee account changed before PAN import');
   let importResult={},cancelledResult={deleted:0};
   if(batch.length)importResult=await postBatch(hub,batch,{url:pageUrl,scanId,jobType:options.jobType||'sync'})||{};
   if(cancelledNos.length)cancelledResult=await postCancelled(hub,String(account.userid),cancelledNos)||{deleted:0};
@@ -585,8 +589,9 @@ async function runSync(tabId,fresh){
     const hubStatus=await hubJson(hub,`/api/status.php?account_id=${encodeURIComponent(aid)}`).catch(()=>null),initialPanOrders=Number(hubStatus?.account_purchase_orders??hubStatus?.purchase_orders??hubStatus?.orders??0)||0;
     const statusTypes=[3,7,8,12,4,9]; // type 4 is read only to delete cancelled rows; never imported.
     let st=await getState(aid);
-    if(fresh&&st.pendingItemCount>0&&st.pendingHub&&st.pendingHub!==hub)throw new Error('PAN URL เปลี่ยนขณะมีออเดอร์ค้างตรวจ · ต้องใช้ PAN เดิมหรือยืนยันล้าง checkpoint');
-    if(fresh)st={offset:0,orders:0,items:0,ignored:0,cancelled:0,dateUnknown:0,pages:0,done:false,paused:false,seenOffsets:[],scanId:crypto.randomUUID(),apiMode:'primary',statusIndex:0,statusOffset:0,statusSeenOffsets:[],shopeeRecords:0,shopeeUniqueOrders:0,duplicateRecords:0,panInsertedOrders:0,panUpdatedOrders:0,cancelledDeleted:0,panOrders:initialPanOrders,syncSeenOrderNos:[],pendingItemOrders:[],pendingItemCount:0,pendingReasons:{},pendingHub:hub,partial:false,scanComplete:false};
+    if(st.pendingItemCount>0&&st.pendingHub&&st.pendingHub!==hub)throw new Error('PAN URL เปลี่ยนขณะมีออเดอร์ค้างตรวจ · ต้องใช้ PAN เดิมหรือยืนยันล้าง checkpoint');
+    const retainedPending=Array.isArray(st.pendingItemOrders)?st.pendingItemOrders:[];
+    if(fresh)st={offset:0,orders:0,items:0,ignored:0,cancelled:0,dateUnknown:0,pages:0,done:false,paused:false,seenOffsets:[],scanId:crypto.randomUUID(),apiMode:'primary',statusIndex:0,statusOffset:0,statusSeenOffsets:[],shopeeRecords:0,shopeeUniqueOrders:0,duplicateRecords:0,panInsertedOrders:0,panOrders:initialPanOrders,syncSeenOrderNos:[],pendingItemOrders:retainedPending,pendingItemCount:retainedPending.length,pendingReasons:pendingReasonCounts(retainedPending),pendingHub:hub,partial:retainedPending.length>0,scanComplete:false};
     else if(st.panOrders===undefined)st.panOrders=initialPanOrders;
     if(!st.scanId)st.scanId=crypto.randomUUID();if(!st.apiMode)st.apiMode='primary';
     st=await setState(aid,{...st,pendingHub:hub,accountUsername:account.username||account.nickname||'',accountId:aid,running:true,paused:false,error:'',done:false,job:'sync',status:'starting'});
@@ -821,7 +826,7 @@ async function retryPendingItemOrders(tabId){
     let st=await getState(aid);
     if(st.pendingHub&&st.pendingHub!==hub)throw new Error('PAN URL ไม่ตรงกับรายการที่ค้างตรวจสินค้า · ไม่บันทึกข้ามฐาน');
     const pending=Array.isArray(st.pendingItemOrders)?st.pendingItemOrders:[];
-    if(!pending.length){await setState(aid,{running:false,done:true,partial:false,pendingItemCount:0,status:'ไม่มีออเดอร์ที่ค้างตรวจสินค้า'});return;}
+    if(!pending.length){await setState(aid,{running:false,done:Boolean(st.scanComplete),partial:false,pendingItemCount:0,status:'ไม่มีออเดอร์ที่ค้างตรวจสินค้า'});return;}
     await setState(aid,{job:'item_retry',running:true,done:false,paused:false,error:'',partial:true,
       pendingRetryDone:0,pendingRetryTotal:pending.length,status:`ตรวจ Buyer Detail อีกครั้ง ${pending.length} Order`});
     for(let i=0;i<pending.length;i++){
@@ -854,7 +859,7 @@ async function retryPendingItemOrders(tabId){
       await sleep(220);
     }
     st=await getState(aid);const left=(st.pendingItemOrders||[]).length;
-    await setState(aid,{running:false,partial:left>0,done:left===0,
+    await setState(aid,{running:false,partial:left>0,done:left===0&&Boolean(st.scanComplete),
       status:left?partialSyncText(left):'ตรวจรายการค้างครบแล้ว · ดูผลใน PAN'});
   }catch(e){if(aid)await setState(aid,{running:false,error:String(e?.message||e),status:'error'});else throw e;}
   finally{runningJob=null;}
@@ -957,7 +962,7 @@ chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{(async()=>{
   else if(msg?.type==='REFRESH_SINGLE_ORDER'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');refreshSingleOrder(msg.tabId,msg.orderNo).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='START_PRODUCT_ENRICH'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runProductEnrichment(msg.tabId).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='PAUSE_SYNC'){const id=(await chrome.storage.local.get('lastAccountId')).lastAccountId||'';if(id)await setState(id,{paused:true,status:'pausing'});sendResponse({ok:true});}
-  else if(msg?.type==='RESET_SYNC'){const id=String(msg.accountId||((await chrome.storage.local.get('lastAccountId')).lastAccountId||''));if(id){const all=await getAllStates();delete all[id];await chrome.storage.local.set({syncStates:all});}sendResponse({ok:true});}
+  else if(msg?.type==='RESET_SYNC'){const id=String(msg.accountId||((await chrome.storage.local.get('lastAccountId')).lastAccountId||''));if(id){const all=await getAllStates(),prev=all[id]||{},pending=prev.pendingItemOrders||[];all[id]={pendingItemOrders:pending,pendingItemCount:pending.length,pendingReasons:pendingReasonCounts(pending),pendingHub:prev.pendingHub||'',partial:pending.length>0,done:false,scanComplete:false,status:pending.length?'รีเซ็ตจุดสแกนแล้ว · คิวสินค้าไม่ครบยังอยู่':'รีเซ็ตจุดสแกนแล้ว'};await chrome.storage.local.set({syncStates:all});}sendResponse({ok:true});}
   else if(msg?.type==='GET_STATE'){const id=String(msg.accountId||((await chrome.storage.local.get('lastAccountId')).lastAccountId||''));sendResponse({ok:true,state:await getState(id)});}
   else if(msg?.type==='GET_ACCOUNT'){try{const a=await accountForTab(msg.tabId);sendResponse({ok:true,account:a,state:await getState(String(a.userid))});}catch(e){sendResponse({ok:false,error:String(e.message||e)});}}
 })().catch(e=>sendResponse({ok:false,error:String(e.message||e)}));return true;});

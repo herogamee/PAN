@@ -22,7 +22,7 @@
 
 ## Roadmap และงานที่ค้าง
 
-แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.11 + Shopee Connector v2.4.16 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
+แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.11 + Shopee Connector v2.4.17 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
 
 ## PAN 2.5.6 — ถอดวันที่ได้รับพัสดุที่ Buyer API ยังยืนยันไม่ได้
 

@@ -28,7 +28,7 @@ $('copyDebug').onclick=()=>{
   const shapes=(currentState.pendingItemOrders||[]).slice(0,20).map(p=>({
     reason:p.reason,summaryCount:p.productCount,shape:p.shape||null
   }));
-  copyText(JSON.stringify({version:'2.4.16',state:safe,pendingItemShapes:shapes},null,2));
+  copyText(JSON.stringify({version:'2.4.17',state:safe,pendingItemShapes:shapes},null,2));
 };
 chrome.runtime.onMessage.addListener(m=>{if(m?.type==='SYNC_PROGRESS'&&(!currentAccount||String(m.state?.accountId||'')===String(currentAccount.userid)))render(m.state)});
 chrome.runtime.onMessage.addListener(m=>{if(m?.type==='SYNC_ERROR')log(m.error)});

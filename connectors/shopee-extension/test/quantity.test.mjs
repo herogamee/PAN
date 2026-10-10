@@ -297,3 +297,37 @@ test('pending-order retry never writes to a different PAN URL or Shopee account'
   assert.ok(g.storage.syncStates['42'].error.includes('account switched'));
   assert.equal(g.posts.length,0);
 });
+
+
+test('Buyer Detail does not inherit a contradictory preview-only product count',()=>{
+  const f=fixture();const list=fakeOrder('FAKE-LIST-INACCURATE');
+  list.info_card.product_count=11;
+  const rows=fourBuyerRows().info_card.order_list_cards[0].product_info.item_groups.flatMap(g=>g.items);
+  const candidate=f.ctx.buyerDetailItemCandidate({data:{item_list:rows}},list,{userid:42,username:'fixture'});
+  assert.equal(candidate.status,'complete');
+  assert.equal(candidate.normalized.items.length,4);
+  assert.equal(candidate.normalized.itemQuantity,5);
+});
+
+test('fresh Full Sync preserves older pending item orders',async()=>{
+  const f=fixture({detailOnlyMeta:true,listRecords:[]});
+  const pending={orderNo:'FAKE-PENDING-RETAIN',listType:3,shopId:'400',shopName:'Fixture Shop',
+    productCount:11,reason:'product_count_exceeds_snapshot'};
+  await f.ctx.setState('42',{job:'sync',pendingHub:'http://localhost/pan',
+    pendingItemOrders:[pending],pendingItemCount:1,scanComplete:true,partial:true});
+  await f.ctx.runSync(7,true);
+  assert.equal(f.storage.syncStates['42'].pendingItemCount,1);
+  assert.equal(f.storage.syncStates['42'].done,false);
+  assert.equal(f.storage.syncStates['42'].partial,true);
+});
+
+test('switching buyer account before importing a preview prevents PAN write',async()=>{
+  const f=fixture({detailOnlyMeta:true,accounts:[42,99]});
+  await assert.rejects(()=>f.ctx.processSyncRecords([fakeOrder()],{userid:42,username:'fixture'},
+    'http://localhost/pan','scan','url',[],{autoEnrich:true,tabId:7}),/account changed before PAN import/);
+  assert.equal(f.posts.filter(x=>x.url.endsWith('/api/import.php')).length,0);
+});
+
+test('checkpoint reset source preserves existing pending items',()=>{
+  assert.match(source,/pendingItemOrders:pending,pendingItemCount:pending.length,pendingReasons:pendingReasonCounts\(pending\)/);
+});
