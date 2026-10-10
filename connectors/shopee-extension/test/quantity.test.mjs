@@ -15,13 +15,16 @@ const fakeOrder=(id='FAKE-QUANTITY-ORDER')=>({
       ]}]}
     }]}
 });
-function fixture({data=fakeOrder(),accounts=[42,42,42],detailOnlyMeta=false}={}){
+function fixture({data=fakeOrder(),accounts=[42,42,42],detailOnlyMeta=false,detailFor=null,listRecords=null}={}){
   const storage={hubUrl:'http://localhost/pan',apiKey:'safe-fixture'},posts=[];
   let accountCalls=0;
   const sandbox={crypto:webcrypto,console,setTimeout,clearTimeout,
     fetch:async (url,opts={})=>{
       posts.push({url,body:opts.body?JSON.parse(opts.body):null});
-      return {ok:true,status:200,text:async()=>JSON.stringify({ok:true,updated_orders:1,inserted_orders:0})};
+      const result=url.includes('/api/sync_anchor.php')?
+        {ok:true,account_id:'42',cutoff_date:'',latest_order_date:''}:
+        {ok:true,updated_orders:1,inserted_orders:0};
+      return {ok:true,status:200,text:async()=>JSON.stringify(result)};
     },
     chrome:{storage:{local:{
       get:async keys=>Object.fromEntries((Array.isArray(keys)?keys:[keys]).map(k=>[k,structuredClone(storage[k])])),
@@ -30,8 +33,8 @@ function fixture({data=fakeOrder(),accounts=[42,42,42],detailOnlyMeta=false}={})
       scripting:{executeScript:async({func,args})=>{
         const text=func.toString();
         if(text.includes('get_account_info'))return [{result:{http:200,ok:true,account:{userid:accounts[Math.min(accountCalls++,accounts.length-1)],username:'fixture'}}}];
-        if(text.includes('get_order_detail'))return [{result:{http:200,ok:true,json:{error:0,data:detailOnlyMeta?{pc_processing_info:{}}:data},url:'https://shopee.co.th/api/v4/order/get_order_detail'}}];
-        return [{result:{http:200,ok:true,json:{error:0,data:{details_list:detailOnlyMeta?[fakeOrder()]:[],next_offset:-1}},url:'https://shopee.co.th/api/v4/order/get_order_list'}}];
+        if(text.includes('get_order_detail'))return [{result:{http:200,ok:true,json:{error:0,data:detailOnlyMeta?{pc_processing_info:{}}:(detailFor?detailFor(String(args?.[0])):data)},url:'https://shopee.co.th/api/v4/order/get_order_detail'}}];
+        return [{result:{http:200,ok:true,json:{error:0,data:{details_list:listRecords??(detailOnlyMeta?[fakeOrder()]:[]),next_offset:-1}},url:'https://shopee.co.th/api/v4/order/get_order_list'}}];
       }}}
   };
   const ctx=vm.createContext(sandbox);vm.runInContext(source,ctx);
@@ -62,7 +65,7 @@ test('identical SKU across shipping groups remains two distinct purchased lines'
 });
 
 test('missing or conflicting quantity hard-stops instead of fabricating 1',async()=>{
-  const f=fixture();const o=fakeOrder();delete o.info_card.order_list_cards[0].product_info.item_groups[0].items[2].model_quantity_purchased;
+  const f=fixture();const o=fakeOrder('FAKE-MISSING-QUANTITY');delete o.info_card.order_list_cards[0].product_info.item_groups[0].items[2].model_quantity_purchased;
   assert.equal(f.ctx.normalizeOrder(o,{userid:42}).ignoredReason,'missing_quantity');
   const o2=fakeOrder();o2.info_card.order_list_cards[0].product_info.item_groups[0].items[2].amount=1;
   assert.equal(f.ctx.normalizeOrder(o2,{userid:42}).ignoredReason,'conflicting_quantity_fields');
@@ -159,11 +162,14 @@ test('Buyer Detail response item_list replaces the abbreviated two-row list snap
   assert.ok(posted.body.items.every(r=>r.item_snapshot_source==='buyer_detail_complete'));
 });
 
-test('Buyer Detail inconsistent product count aborts entire page before import',async()=>{
+test('Buyer Detail inconsistent product count isolates Order as pending without any unsafe import',async()=>{
   const data=fourBuyerRows();data.info_card.product_count=9;
   const f=fixture({data});
-  await assert.rejects(()=>f.ctx.processSyncRecords([fakeOrder()],{userid:42},'http://localhost/pan','scan','url',[],
-    {autoEnrich:true,tabId:7}),/Buyer Order Detail item mismatch/);
+  const outcome=await f.ctx.processSyncRecords([fakeOrder()],{userid:42},'http://localhost/pan','scan','url',[],
+    {autoEnrich:true,tabId:7});
+  assert.equal(outcome.orderCount,0);
+  assert.equal(outcome.pendingItemOrders.length,1);
+  assert.match(outcome.pendingItemOrders[0].reason,/buyer_detail_/);
   assert.ok(!f.posts.some(p=>p.url.endsWith('/import.php')));
 });
 
@@ -180,4 +186,114 @@ test('incomplete Order List product count is repaired by full Buyer Detail befor
   const imported=f.posts.find(p=>p.url.endsWith('/import.php'))?.body?.items;
   assert.equal(imported?.length,4);
   assert.equal(imported.reduce((sum,x)=>sum+x.quantity,0),5);
+});
+
+// Regression for the real-world v2.4.15 error: invalid=2/20 with
+// product_count_exceeds_snapshot and missing_valid_items. Valid Orders must
+// still be inserted, while the two other Order IDs are kept for a private,
+// account-scoped retry. No source quantities are invented.
+test('two malformed item snapshots in 20 do not block the 18 valid Orders',async()=>{
+  let detailAvailable=false;
+  const f=fixture({detailFor:id=>detailAvailable?fakeOrder(id):{pc_processing_info:{}}});
+  const rows=Array.from({length:20},(_,i)=>fakeOrder('FAKE-ORDER-'+String(i).padStart(4,'0')));
+  rows[18].info_card.product_count=8; // 8 advertised, 5 explicit purchased units
+  for(const item of rows[19].info_card.order_list_cards[0].product_info.item_groups[0].items)item.status=3;
+  assert.equal(f.ctx.normalizeOrder(rows[18],{userid:42}).ignoredReason,'product_count_exceeds_snapshot');
+  assert.equal(f.ctx.normalizeOrder(rows[19],{userid:42}).ignoredReason,'missing_valid_items');
+  const out=await f.ctx.processSyncRecords(rows,{userid:42,username:'fixture'},'http://localhost/pan',
+    'scan-20','order-list',[],{autoEnrich:true,tabId:7,jobType:'sync'});
+  assert.equal(out.orderCount,18);
+  assert.equal(out.pendingItemOrders.length,2);
+  assert.deepEqual(Array.from(out.pendingItemOrders,r=>r.reason),
+    ['product_count_exceeds_snapshot','missing_valid_items']);
+  const imports=f.posts.filter(x=>x.url.endsWith('/api/import.php'));
+  assert.equal(imports.length,1,'valid Orders committed together');
+  assert.equal(new Set(imports[0].body.items.map(x=>x.order_no)).size,18);
+  assert.equal(imports[0].body.items.length,54);
+  assert.ok(!imports[0].body.items.some(x=>x.order_no==='FAKE-ORDER-0018'||x.order_no==='FAKE-ORDER-0019'));
+  const update=f.ctx.syncCounterPatch({orders:0,items:0,pendingItemOrders:[]},out);
+  assert.equal(update.pendingItemCount,2);
+  assert.equal(update.pendingReasons.product_count_exceeds_snapshot,1);
+  assert.equal(update.pendingReasons.missing_valid_items,1);
+  await f.ctx.setState('42',{...update,job:'sync',scanComplete:true,partial:true,
+    accountId:'42',scanId:'saved-checkpoint',offset:-1,done:false});
+  const original=structuredClone(f.storage.syncStates['42']);
+  detailAvailable=true;
+  await f.ctx.retryPendingItemOrders(7);
+  const result=f.storage.syncStates['42'];
+  assert.equal(result.pendingItemCount,0,'both problematic Orders recovered from fresh Detail');
+  assert.equal(result.pendingItemOrders.length,0);
+  assert.equal(result.done,true);
+  assert.equal(result.partial,false);
+  assert.equal(result.scanId,original.scanId);
+  assert.equal(result.offset,original.offset,'retry never rewinds checkpoint');
+  assert.equal(f.posts.filter(x=>x.url.endsWith('/api/import.php')).length,3,'exactly two targeted imports');
+});
+
+test('metadata-only retry retains pending Orders and reports incomplete rather than false success',async()=>{
+  const f=fixture({detailOnlyMeta:true});
+  const ref={orderNo:'FAKE-PENDING-123',listType:3,shopId:'400',shopName:'Fixture Shop',productCount:7,reason:'product_count_exceeds_snapshot'};
+  await f.ctx.setState('42',{job:'sync',scanComplete:true,partial:true,pendingItemOrders:[ref],pendingItemCount:1});
+  await f.ctx.retryPendingItemOrders(7);
+  const state=f.storage.syncStates['42'];
+  assert.equal(state.pendingItemCount,1);
+  assert.equal(state.partial,true);
+  assert.equal(state.done,false);
+  assert.equal(f.posts.length,0,'no incomplete snapshot persisted');
+  assert.equal(state.pendingReasons.buyer_detail_has_no_items,1);
+});
+
+
+test('fresh Full Sync from an empty database continues 18/20 and stops as PARTIAL with preserved retry ledger',async()=>{
+  const rows=Array.from({length:20},(_,i)=>fakeOrder('FAKE-FULL-'+String(i).padStart(4,'0')));
+  rows[18].info_card.product_count=9;
+  for(const item of rows[19].info_card.order_list_cards[0].product_info.item_groups[0].items)item.status=3;
+  const f=fixture({detailOnlyMeta:true,listRecords:rows});
+  await f.ctx.runSync(7,true);
+  const st=f.storage.syncStates['42'];
+  assert.equal(st.running,false);
+  assert.equal(st.pages,1);
+  assert.equal(st.offset,-1,'pagination advanced past accepted page');
+  assert.equal(st.orders,18);
+  assert.equal(st.pendingItemCount,2);
+  assert.equal(st.partial,true);
+  assert.equal(st.done,false,'never claim complete with two unreadable Orders');
+  assert.equal(st.scanComplete,true);
+  assert.ok(st.status.includes('2 Order'));
+  assert.equal(f.posts.filter(p=>p.url.endsWith('/api/import.php')).length,1);
+  assert.equal(f.posts.filter(p=>p.url.endsWith('/api/reconcile.php')).length,0,
+    'no whole-account reconcile while unresolved Orders remain');
+});
+
+test('Recent Sync keeps unresolved Orders rather than declaring complete',async()=>{
+  const rows=[fakeOrder('FAKE-RECENT-GOOD'),fakeOrder('FAKE-RECENT-BAD')];
+  rows[1].info_card.product_count=99;
+  const f=fixture({detailOnlyMeta:true,listRecords:rows});
+  await f.ctx.runRecentSync(7,true);
+  const st=f.storage.syncStates['42'];
+  assert.equal(st.running,false);
+  assert.equal(st.orders,1);
+  assert.equal(st.pendingItemCount,1);
+  assert.equal(st.partial,true);
+  assert.equal(st.done,false);
+  assert.equal(st.scanComplete,true);
+  assert.equal(f.posts.filter(p=>p.url.endsWith('/api/import.php')).length,1);
+});
+
+test('pending-order retry never writes to a different PAN URL or Shopee account',async()=>{
+  const f=fixture();const row={orderNo:'FAKE-PENDING-987',listType:3,shopId:'400',shopName:'Fixture Shop',
+    productCount:7,reason:'product_count_exceeds_snapshot'};
+  await f.ctx.setState('42',{pendingItemOrders:[row],pendingItemCount:1,
+    pendingHub:'https://another-pan.example.test',job:'sync',scanComplete:true,partial:true});
+  await f.ctx.retryPendingItemOrders(7);
+  assert.equal(f.storage.syncStates['42'].pendingItemCount,1);
+  assert.ok(f.storage.syncStates['42'].error.includes('PAN URL'));
+  assert.equal(f.posts.length,0);
+  const g=fixture({accounts:[42,99]});
+  await g.ctx.setState('42',{pendingItemOrders:[row],pendingItemCount:1,
+    pendingHub:'http://localhost/pan',job:'sync',scanComplete:true,partial:true});
+  await g.ctx.retryPendingItemOrders(7);
+  assert.equal(g.storage.syncStates['42'].pendingItemCount,1);
+  assert.ok(g.storage.syncStates['42'].error.includes('account switched'));
+  assert.equal(g.posts.length,0);
 });
