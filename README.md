@@ -22,7 +22,7 @@
 
 ## Roadmap และงานที่ค้าง
 
-แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.11 + Shopee Connector v2.4.15 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
+แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.11 + Shopee Connector v2.4.16 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
 
 ## PAN 2.5.6 — ถอดวันที่ได้รับพัสดุที่ Buyer API ยังยืนยันไม่ได้
 
@@ -356,6 +356,18 @@ Brand: **itoom.work**
 ## PAN 2.5.1 maintenance update
 
 See [`docs/PAN-v2.5.1-HANDOFF.md`](docs/PAN-v2.5.1-HANDOFF.md) for 2.5.1 fixes, test/deployment instructions, and explicit production-validation limitations. Historical v2.5.0 release notes are retained unchanged.
+
+## Shopee Connector v2.4.16 — Full Sync ข้อมูล 2/20 ผิดรูปแบบ (Core 2.5.11 ไม่เปลี่ยน)
+
+- เมื่อ Shopee Buyer Order List / Detail มีบาง Order ที่อ่านสินค้าไม่ครบ เช่น `product_count_exceeds_snapshot` และ `missing_valid_items`, Connector จะแยก **เฉพาะออเดอร์นั้น** เป็น `ออเดอร์สินค้าค้างตรวจ` แทนหยุดนำเข้าทั้ง 20 Order
+- ส่ง Order ที่ผ่าน validation เข้า PAN ได้อย่างปลอดภัยก่อน (เช่น 18/20), เก็บ pending ledger เฉพาะบัญชี+PAN URL ใน Chrome storage และเดินอ่านหน้าต่อไปโดยไม่แต่งจำนวนสินค้า/ราคา/ตัวเลือก
+- ถ้ามี pending รายการหนึ่งขึ้นไป **จะไม่แสดง Full/Recent Sync สำเร็จครบ** และ **ไม่ทำ Full Sync reconcile**; แสดงจำนวน pending/เหตุผล พร้อมปุ่ม **ตรวจสินค้าออเดอร์ที่ค้างใหม่** ที่ไม่ย้อน checkpoint หรือยิงข้อมูลออเดอร์อื่นซ้ำ
+- หาก Shopee คืนข้อมูลจาก Buyer Detail ที่ครบและยืนยันได้ จะเขียนทับเฉพาะออเดอร์ค้างด้วย transaction ของ PAN; ถ้า API ยังคงให้ metadata-only/ไม่ครบ จะไม่บันทึกข้อมูลสมมติและคงรายการค้างตรวจไว้
+- Account mismatch, ไม่มีรหัส Order, unknown list_type และ PAN URL ผิดยังคงหยุดแบบ fail-closed; debug clipboard ส่งเฉพาะชื่อฟิลด์/ยอดรวม ไม่คัดลอก Order IDs หรือ cookie
+- **ติดตั้ง:** เปลี่ยนเฉพาะไฟล์ใน `connectors/shopee-extension`, เปิด `chrome://extensions` แล้ว Reload. Core VERSION ยังเป็น 2.5.11 และ **ไม่ต้องล้าง database อีกครั้ง**. หากเพิ่งล้างฐาน ให้เลือก Full Sync เริ่มต้นหนึ่งครั้ง หลังสำรอง/ตรวจบัญชี; หากสะดุด 2/20 ให้ใช้ปุ่มตรวจรายการค้าง
+- [Connector Hotfix / Acceptance](CONNECTOR-HOTFIX-v2.4.16.md) · [Issue #8](https://github.com/herogamee/PAN/issues/8)
+
+**ข้อจำกัด:** ทดสอบได้ด้วย synthetic fixtures เท่านั้น ยังไม่ได้ตรวจ Buyer API และฐานข้อมูลของบัญชีผู้ใช้จริง จึงไม่ควรสรุปว่าออเดอร์ที่ค้างถูกกู้คืนแล้ว
 
 ## PAN 2.5.11 — Buyer Order Item Detail อัตโนมัติ (ทดลองกับบัญชีจริงยังไม่ผ่าน Gate)
 

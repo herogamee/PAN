@@ -1,5 +1,5 @@
 const DEFAULT_HUB='https://pan.itoom.work';
-const VERSION='2.4.15';
+const VERSION='2.4.16';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const txt=v=>v==null?'':String(v);
 const num=v=>{const n=Number(v);if(!Number.isFinite(n))return 0;return Math.abs(n)>=100000?n/100000:n};
@@ -430,61 +430,150 @@ async function postCancelled(hub,accountId,orderNos){if(!orderNos.length)return 
 async function accountForTab(tabId){const ai=await mainWorldAccount(tabId);if(!ai?.ok||!ai?.account?.userid)throw new Error(`ยืนยัน Shopee User ID ไม่สำเร็จ · HTTP ${ai?.http??0} · error ${ai?.json_error??''}`);return ai.account;}
 async function resolveDetail(tabId,orderId){const r=await mainWorldDetail(tabId,orderId);if(r?.http===401||r?.http===403)throw new Error(`Shopee HTTP ${r.http} Order Detail`);if(Number(r?.json?.error||0)===90309999)throw new Error('Shopee anti-fraud 90309999 ที่ Order Detail');if(!r?.ok||!r?.json?.data)return null;return detailMeta(r.json);}
 
+// An unreadable item list is one unresolved Order, NOT a reason to throw away
+// the other 19 valid Orders on its page. Save only minimal identifiers in the
+// account-scoped local Extension state; no raw buyer payload, cookies or address.
+const INVALID_ITEM_REASONS=new Set([
+  'missing_order_cards','missing_shop','missing_items','missing_valid_items',
+  'missing_quantity','invalid_quantity','conflicting_quantity_fields',
+  'product_identity_collision','product_count_exceeds_snapshot','mixed_shop_cards'
+]);
+const PENDING_ITEM_LIMIT=2500;
+function pendingItemShape(raw){
+  const cards=raw?.info_card?.order_list_cards;
+  if(!Array.isArray(cards))return {cards:0,groups:0,rows:0,itemKeys:[]};
+  let groups=0,rows=0;const keys=new Set();
+  for(const c of cards){for(const g of c?.product_info?.item_groups||[]){
+    groups++;if(!Array.isArray(g?.items))continue;
+    for(const item of g.items){rows++;
+      if(item&&typeof item==='object')for(const k of Object.keys(item)){
+        // Field names only, not item values, buyer details or credentials.
+        if(/^(?:item_|model_|variation|variant|amount|quantity|price|name|status|order_|line_)/.test(k))keys.add(k);
+      }
+    }
+  }}
+  return {cards:cards.length,groups,rows,itemKeys:[...keys].sort().slice(0,24)};
+}
+function pendingOrderReference(raw,orderNo,reason){
+  const no=txt(orderNo).trim();
+  if(!/^[a-zA-Z0-9_-]{6,100}$/.test(no))return null;
+  const info=raw?.info_card||{},cards=info?.order_list_cards||[];
+  const card=Array.isArray(cards)?cards[0]||{}:{};
+  const shop=card?.shop_info||{};
+  const itemCount=Number(info?.product_count);
+  return {orderNo:no,listType:Number(raw?.list_type||0),reason:txt(reason).slice(0,90),
+    shopId:txt(shop?.shop_id??shop?.shopid??card?.shop_id??raw?.shop_id??'').slice(0,80),
+    shopName:txt(shop?.shop_name??shop?.username??raw?.shop_name??'').slice(0,180),
+    productCount:Number.isSafeInteger(itemCount)&&itemCount>=0?itemCount:null,shape:pendingItemShape(raw)};
+}
+function minimalOrderForPending(ref){
+  return {list_type:Number(ref.listType||0),order_id:ref.orderNo,info_card:{
+    order_id:ref.orderNo,product_count:ref.productCount,
+    order_list_cards:[{shop_info:{shop_id:ref.shopId,shop_name:ref.shopName},
+      product_info:{item_groups:[]}}]}};
+}
+function pendingReasonCounts(rows){
+  const counts={};for(const r of rows||[]){const key=txt(r.reason)||'unresolved';
+    counts[key]=(counts[key]||0)+1;}return counts;
+}
+function mergePendingOrders(existing,added,resolved){
+  const completed=new Set((resolved||[]).map(String));const indexed=new Map();
+  for(const row of [...(Array.isArray(existing)?existing:[]),...(added||[])]){
+    const no=txt(row?.orderNo);if(!no||completed.has(no))continue;
+    indexed.set(no,row);
+  }
+  if(indexed.size>PENDING_ITEM_LIMIT)
+    throw new Error('จำนวนออเดอร์ที่ค้างตรวจเกินขีดจำกัด · ไม่เลื่อน checkpoint');
+  return [...indexed.values()];
+}
+function partialSyncText(pending){return `สแกนรายการอื่นแล้ว · ค้างตรวจสินค้า ${pending} Order · ลองอ่านใหม่จากปุ่มรายการค้าง (ยังไม่ถือว่าซิงก์ครบ)`;}
 let runningJob=null;
 async function processSyncRecords(raw,account,hub,scanId,pageUrl,seenOrderNos=[],options={}){
-  const batch=[],cancelledNos=[];let orderCount=0,ignored=0,cancelled=0,dateUnknown=0,newUnique=0,duplicateRecords=0;const reasonCounts={};
-  const pageOrderSnapshots=new Map(),detailMetas=new Map();
+  const batch=[],cancelledNos=[],pendingItemOrders=[],resolvedOrderNos=[];
+  let orderCount=0,ignored=0,cancelled=0,dateUnknown=0,newUnique=0,duplicateRecords=0;
+  const reasonCounts={},pageOrderSnapshots=new Map(),detailMetas=new Map();
   let buyerDetailComplete=0,buyerDetailPreview=0;
   const seen=new Set((Array.isArray(seenOrderNos)?seenOrderNos:[]).map(String));
+  const canQuarantine=Boolean(options.autoEnrich&&options.tabId);
+  function addPending(record,orderNo,reason){
+    if(!canQuarantine||!INVALID_ITEM_REASONS.has(reason)&&!String(reason).startsWith('buyer_detail_'))
+      throw new Error(`Shopee schema คำสั่งซื้อไม่ตรง · ${reason} · ไม่เลื่อน checkpoint`);
+    const reference=pendingOrderReference(record,orderNo,reason);
+    if(!reference)throw new Error('Shopee schema ไม่ทราบรหัส Order · ไม่เลื่อน checkpoint');
+    pendingItemOrders.push(reference);ignored++;
+    reasonCounts[reason]=(reasonCounts[reason]||0)+1;
+  }
   for(const r of raw){
     let n=normalizeOrder(r,account);
     if(n.orderNo){const k=String(n.orderNo);if(seen.has(k))duplicateRecords++;else{seen.add(k);newUnique++;}}
     if(n.ignoredReason==='cancelled_order'){
-      cancelled++;ignored++;if(n.orderNo)cancelledNos.push(n.orderNo);
+      cancelled++;ignored++;if(n.orderNo){cancelledNos.push(n.orderNo);resolvedOrderNos.push(String(n.orderNo));}
       reasonCounts.cancelled_order=(reasonCounts.cancelled_order||0)+1;continue;
     }
     if(!extractBestListDate(r))dateUnknown++;
     const knownOrderId=txt(n.orderNo||r?.info_card?.order_id||r?.info_card?.order_sn||r?.order_id||r?.order_sn);
-    if(knownOrderId && (n.items.length||options.autoEnrich&&options.tabId)){
-      // An abbreviated list can fail quantity validation even while the
-      // authenticated Detail API contains every purchased row. Re-fetch detail
-      // BEFORE treating a preview as an unrecoverable structural error.
-      const listFingerprint=JSON.stringify({reason:n.ignoredReason||'',
-        rows:n.items?.map(x=>[x.product_key,x.variant_name,x.quantity,x.purchase_price])||[]});
-      const previous=pageOrderSnapshots.get(knownOrderId);
-      if(previous!==undefined){
-        if(previous!==listFingerprint)throw new Error('Conflicting duplicate Order item snapshots on same page; no import/checkpoint');
-        continue;
-      }
-      pageOrderSnapshots.set(knownOrderId,listFingerprint);
-      if(options.autoEnrich&&options.tabId){
-        const detailSnapshot=await resolveBuyerItemSnapshot(options.tabId,r,account);
-        if(detailSnapshot.status==='error')
-          throw new Error(`Buyer Order Detail item mismatch: ${detailSnapshot.reason}; no page write or checkpoint`);
-        if(detailSnapshot.status==='complete'){
-          n=detailSnapshot.normalized;
-          if(detailSnapshot.detailJson)detailMetas.set(String(n.orderNo),detailMeta(detailSnapshot.detailJson));
-          buyerDetailComplete++;
-        }else buyerDetailPreview++;
-        // Rate-limit friendly: each order detail is read once before import.
-        await sleep(110);
-      }
-      if(n.items.length){orderCount++;batch.push(...n.items);}
-      else{ignored++;const reason=n.ignoredReason||'unknown';reasonCounts[reason]=(reasonCounts[reason]||0)+1;}
+    if(n.ignoredReason==='unknown_list_type')throw new Error('Shopee ส่งประเภท Order ที่ยังไม่รองรับ · ไม่เลื่อน checkpoint');
+    if(!knownOrderId){
+      // Without an identity we cannot keep a recoverable pending reference.
+      if(INVALID_ITEM_REASONS.has(n.ignoredReason)||n.ignoredReason==='missing_order_identity')
+        throw new Error('Shopee ไม่ระบุ Order identity · ไม่เลื่อน checkpoint');
+      ignored++;reasonCounts[n.ignoredReason||'unknown']=(reasonCounts[n.ignoredReason||'unknown']||0)+1;
+      continue;
     }
+    const listFingerprint=JSON.stringify({reason:n.ignoredReason||'',
+      rows:n.items?.map(x=>[x.product_key,x.variant_name,x.quantity,x.purchase_price])||[]});
+    const previous=pageOrderSnapshots.get(knownOrderId);
+    if(previous!==undefined){
+      if(previous!==listFingerprint)throw new Error('Conflicting duplicate Order item snapshots on same page; no import/checkpoint');
+      continue;
+    }
+    pageOrderSnapshots.set(knownOrderId,listFingerprint);
+    if(options.autoEnrich&&options.tabId){
+      const detailSnapshot=await resolveBuyerItemSnapshot(options.tabId,r,account);
+      if(detailSnapshot.status==='error'){
+        // Cross-order identity confusion is a security stop, not a retriable
+        // product parsing mismatch. Other detail-shape failures are isolated.
+        if(detailSnapshot.reason==='buyer_detail_identity_mismatch')
+          throw new Error('Buyer Order Detail identity mismatch · ไม่เลื่อน checkpoint');
+        addPending(r,knownOrderId,detailSnapshot.reason);continue;
+      }
+      if(detailSnapshot.status==='complete'){
+        n=detailSnapshot.normalized;
+        if(detailSnapshot.detailJson)detailMetas.set(String(n.orderNo),detailMeta(detailSnapshot.detailJson));
+        buyerDetailComplete++;
+      }else buyerDetailPreview++;
+      await sleep(110);
+    }
+    if(n.items.length){orderCount++;batch.push(...n.items);resolvedOrderNos.push(knownOrderId);}
+    else if(INVALID_ITEM_REASONS.has(n.ignoredReason))addPending(r,knownOrderId,n.ignoredReason);
+    else if(n.ignoredReason==='missing_order_identity')throw new Error('Shopee ไม่ระบุ Order identity · ไม่เลื่อน checkpoint');
     else{ignored++;const reason=n.ignoredReason||'unknown';reasonCounts[reason]=(reasonCounts[reason]||0)+1;}
   }
-  const structural=['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items','missing_quantity','invalid_quantity','conflicting_quantity_fields','product_identity_collision','product_count_exceeds_snapshot','mixed_shop_cards'].reduce((s,k)=>s+(reasonCounts[k]||0),0);
-  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรง (จำนวนสินค้า/ตัวเลือก) v2.4.15 · ไม่ได้นำเข้า / ไม่เลื่อน checkpoint · invalid=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · ไม่มี raw buyer data ใน Error`);
-  let cancelledResult={deleted:0},importResult={};
-  if(cancelledNos.length)cancelledResult=await postCancelled(hub,String(account.userid),cancelledNos)||{deleted:0};
+  if(pendingItemOrders.length>PENDING_ITEM_LIMIT)
+    throw new Error('รายการค้างตรวจสินค้าเกินขีดจำกัด · ไม่เลื่อน checkpoint');
+  // Each valid Order can be committed, but bad Orders remain in a persistent
+  // local retry ledger. The caller saves pending+checkpoint in the same state
+  // update; a crash before that update only causes a safe re-import of the page.
+  let importResult={},cancelledResult={deleted:0};
   if(batch.length)importResult=await postBatch(hub,batch,{url:pageUrl,scanId,jobType:options.jobType||'sync'})||{};
-  let autoDetail={ok:0,errors:0,lastError:''};if(options.autoEnrich&&options.tabId&&Array.isArray(importResult.detail_refresh_order_nos)&&importResult.detail_refresh_order_nos.length){const typeByOrder=new Map(raw.map(x=>{const n=normalizeOrder(x,account);return [String(n.orderNo||''),Number(x?.list_type||0)]}));const rows=importResult.detail_refresh_order_nos.map(no=>({order_no:String(no),list_type:typeByOrder.get(String(no))||0}));autoDetail=await autoEnrichOrders(hub,options.tabId,account,rows,detailMetas);}
+  if(cancelledNos.length)cancelledResult=await postCancelled(hub,String(account.userid),cancelledNos)||{deleted:0};
+  let autoDetail={ok:0,errors:0,lastError:''};
+  if(options.autoEnrich&&options.tabId&&Array.isArray(importResult.detail_refresh_order_nos)&&importResult.detail_refresh_order_nos.length){
+    const typeByOrder=new Map(raw.map(x=>{const n=normalizeOrder(x,account);return [String(n.orderNo||''),Number(x?.list_type||0)]}));
+    const rows=importResult.detail_refresh_order_nos.map(no=>({order_no:String(no),list_type:typeByOrder.get(String(no))||0}));
+    autoDetail=await autoEnrichOrders(hub,options.tabId,account,rows,detailMetas);
+  }
   const panOrders=Number.isFinite(Number(importResult.pan_purchase_orders))?Number(importResult.pan_purchase_orders):(Number.isFinite(Number(cancelledResult.pan_purchase_orders))?Number(cancelledResult.pan_purchase_orders):null);
-  return {orderCount,itemCount:batch.length,buyerDetailComplete,buyerDetailPreview,ignored,cancelled,dateUnknown,shopeeRecords:raw.length,newUnique,duplicateRecords,seenOrderNos:[...seen],insertedOrders:Number(importResult.inserted_orders||0),updatedOrders:Number(importResult.updated_orders||0),cancelledDeleted:Number(cancelledResult.deleted||0),panOrders,autoDetailUpdated:autoDetail.ok,autoDetailErrors:autoDetail.errors,lastAutoDetailError:autoDetail.lastError};
+  return {orderCount,itemCount:batch.length,buyerDetailComplete,buyerDetailPreview,ignored,cancelled,dateUnknown,shopeeRecords:raw.length,
+    newUnique,duplicateRecords,seenOrderNos:[...seen],pendingItemOrders,resolvedOrderNos,reasonCounts,
+    insertedOrders:Number(importResult.inserted_orders||0),updatedOrders:Number(importResult.updated_orders||0),
+    cancelledDeleted:Number(cancelledResult.deleted||0),panOrders,
+    autoDetailUpdated:autoDetail.ok,autoDetailErrors:autoDetail.errors,lastAutoDetailError:autoDetail.lastError};
 }
 function syncCounterPatch(st,rr){
-  return {orders:Number(st.orders||0)+rr.orderCount,items:Number(st.items||0)+rr.itemCount,buyerDetailComplete:Number(st.buyerDetailComplete||0)+Number(rr.buyerDetailComplete||0),buyerDetailPreview:Number(st.buyerDetailPreview||0)+Number(rr.buyerDetailPreview||0),ignored:Number(st.ignored||0)+rr.ignored,cancelled:Number(st.cancelled||0)+rr.cancelled,dateUnknown:Number(st.dateUnknown||0)+rr.dateUnknown,shopeeRecords:Number(st.shopeeRecords||0)+rr.shopeeRecords,shopeeUniqueOrders:Number(st.shopeeUniqueOrders||0)+rr.newUnique,duplicateRecords:Number(st.duplicateRecords||0)+rr.duplicateRecords,panInsertedOrders:Number(st.panInsertedOrders||0)+rr.insertedOrders,panUpdatedOrders:Number(st.panUpdatedOrders||0)+rr.updatedOrders,cancelledDeleted:Number(st.cancelledDeleted||0)+rr.cancelledDeleted,autoDetailUpdated:Number(st.autoDetailUpdated||0)+Number(rr.autoDetailUpdated||0),autoDetailErrors:Number(st.autoDetailErrors||0)+Number(rr.autoDetailErrors||0),lastAutoDetailError:rr.lastAutoDetailError||st.lastAutoDetailError||'',panOrders:rr.panOrders===null?Number(st.panOrders||0):rr.panOrders,syncSeenOrderNos:rr.seenOrderNos};
+  const pending=mergePendingOrders(st.pendingItemOrders,rr.pendingItemOrders,rr.resolvedOrderNos);
+  return {pendingItemOrders:pending,pendingItemCount:pending.length,pendingReasons:pendingReasonCounts(pending),
+    partial:pending.length>0,orders:Number(st.orders||0)+rr.orderCount,items:Number(st.items||0)+rr.itemCount,buyerDetailComplete:Number(st.buyerDetailComplete||0)+Number(rr.buyerDetailComplete||0),buyerDetailPreview:Number(st.buyerDetailPreview||0)+Number(rr.buyerDetailPreview||0),ignored:Number(st.ignored||0)+rr.ignored,cancelled:Number(st.cancelled||0)+rr.cancelled,dateUnknown:Number(st.dateUnknown||0)+rr.dateUnknown,shopeeRecords:Number(st.shopeeRecords||0)+rr.shopeeRecords,shopeeUniqueOrders:Number(st.shopeeUniqueOrders||0)+rr.newUnique,duplicateRecords:Number(st.duplicateRecords||0)+rr.duplicateRecords,panInsertedOrders:Number(st.panInsertedOrders||0)+rr.insertedOrders,panUpdatedOrders:Number(st.panUpdatedOrders||0)+rr.updatedOrders,cancelledDeleted:Number(st.cancelledDeleted||0)+rr.cancelledDeleted,autoDetailUpdated:Number(st.autoDetailUpdated||0)+Number(rr.autoDetailUpdated||0),autoDetailErrors:Number(st.autoDetailErrors||0)+Number(rr.autoDetailErrors||0),lastAutoDetailError:rr.lastAutoDetailError||st.lastAutoDetailError||'',panOrders:rr.panOrders===null?Number(st.panOrders||0):rr.panOrders,syncSeenOrderNos:rr.seenOrderNos};
 }
 
 async function runSync(tabId,fresh){
@@ -496,10 +585,11 @@ async function runSync(tabId,fresh){
     const hubStatus=await hubJson(hub,`/api/status.php?account_id=${encodeURIComponent(aid)}`).catch(()=>null),initialPanOrders=Number(hubStatus?.account_purchase_orders??hubStatus?.purchase_orders??hubStatus?.orders??0)||0;
     const statusTypes=[3,7,8,12,4,9]; // type 4 is read only to delete cancelled rows; never imported.
     let st=await getState(aid);
-    if(fresh)st={offset:0,orders:0,items:0,ignored:0,cancelled:0,dateUnknown:0,pages:0,done:false,paused:false,seenOffsets:[],scanId:crypto.randomUUID(),apiMode:'primary',statusIndex:0,statusOffset:0,statusSeenOffsets:[],shopeeRecords:0,shopeeUniqueOrders:0,duplicateRecords:0,panInsertedOrders:0,panUpdatedOrders:0,cancelledDeleted:0,panOrders:initialPanOrders,syncSeenOrderNos:[]};
+    if(fresh&&st.pendingItemCount>0&&st.pendingHub&&st.pendingHub!==hub)throw new Error('PAN URL เปลี่ยนขณะมีออเดอร์ค้างตรวจ · ต้องใช้ PAN เดิมหรือยืนยันล้าง checkpoint');
+    if(fresh)st={offset:0,orders:0,items:0,ignored:0,cancelled:0,dateUnknown:0,pages:0,done:false,paused:false,seenOffsets:[],scanId:crypto.randomUUID(),apiMode:'primary',statusIndex:0,statusOffset:0,statusSeenOffsets:[],shopeeRecords:0,shopeeUniqueOrders:0,duplicateRecords:0,panInsertedOrders:0,panUpdatedOrders:0,cancelledDeleted:0,panOrders:initialPanOrders,syncSeenOrderNos:[],pendingItemOrders:[],pendingItemCount:0,pendingReasons:{},pendingHub:hub,partial:false,scanComplete:false};
     else if(st.panOrders===undefined)st.panOrders=initialPanOrders;
     if(!st.scanId)st.scanId=crypto.randomUUID();if(!st.apiMode)st.apiMode='primary';
-    st=await setState(aid,{...st,accountUsername:account.username||account.nickname||'',accountId:aid,running:true,paused:false,error:'',done:false,job:'sync',status:'starting'});
+    st=await setState(aid,{...st,pendingHub:hub,accountUsername:account.username||account.nickname||'',accountId:aid,running:true,paused:false,error:'',done:false,job:'sync',status:'starting'});
     const limit=20;let retries=0;
     while(true){
       st=await getState(aid);if(st.paused){await setState(aid,{running:false,status:'paused'});return;}
@@ -528,12 +618,20 @@ async function runSync(tabId,fresh){
         const rr=await processSyncRecords(raw,account,hub,st.scanId,page.url,st.syncSeenOrderNos||[],{autoEnrich:true,tabId,jobType:'sync'});
         const next=nextOffset(page.json,offset,limit,raw.length),seen=[...(st.seenOffsets||[]).slice(-300),offset];
         st=await setState(aid,{offset:next,...syncCounterPatch(st,rr),pages:Number(st.pages||0)+1,lastPageCount:raw.length,lastFormat:parsed.format,seenOffsets:seen,status:`primary page ${Number(st.pages||0)+1} · offset ${offset}`});
-        if(next===-1||raw.length===0){if(Number(st.orders||0)>0){const rec=await hubJson(hub,'/api/reconcile.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account_id:aid,scan_id:st.scanId})});if(rec?.ok===false)throw new Error(rec.error||'PAN reconcile ไม่สำเร็จ');}await setState(aid,{running:false,done:true,status:'completed',apiMode:'primary'});return;}
+        if(next===-1||raw.length===0){
+          const unresolved=(st.pendingItemOrders||[]).length;
+          if(unresolved){await setState(aid,{running:false,done:false,partial:true,scanComplete:true,
+            status:partialSyncText(unresolved)});return;}
+          if(Number(st.orders||0)>0){const rec=await hubJson(hub,'/api/reconcile.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account_id:aid,scan_id:st.scanId})});if(rec?.ok===false)throw new Error(rec.error||'PAN reconcile ไม่สำเร็จ');}await setState(aid,{running:false,done:true,partial:false,scanComplete:true,status:'completed',apiMode:'primary'});return;}
         await sleep(650+Math.floor(Math.random()*550));continue;
       }
 
       const statusIndex=Number(st.statusIndex||0);
-      if(statusIndex>=statusTypes.length){if(Number(st.orders||0)>0){const rec=await hubJson(hub,'/api/reconcile.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account_id:aid,scan_id:st.scanId})});if(rec?.ok===false)throw new Error(rec.error||'PAN reconcile ไม่สำเร็จ');}await setState(aid,{running:false,done:true,status:'completed · status fallback',apiMode:'status'});return;}
+      if(statusIndex>=statusTypes.length){
+        const unresolved=(st.pendingItemOrders||[]).length;
+        if(unresolved){await setState(aid,{running:false,done:false,partial:true,scanComplete:true,
+          status:partialSyncText(unresolved)});return;}
+        if(Number(st.orders||0)>0){const rec=await hubJson(hub,'/api/reconcile.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account_id:aid,scan_id:st.scanId})});if(rec?.ok===false)throw new Error(rec.error||'PAN reconcile ไม่สำเร็จ');}await setState(aid,{running:false,done:true,partial:false,scanComplete:true,status:'completed · status fallback',apiMode:'status'});return;}
       const listType=statusTypes[statusIndex],offset=Number(st.statusOffset||0),statusSeen=Array.isArray(st.statusSeenOffsets)?st.statusSeenOffsets:[];
       if(statusSeen.includes(`${listType}:${offset}`))throw new Error(`ตรวจพบ pagination วนซ้ำ · list_type=${listType} offset=${offset}`);
       let page;try{page=await mainWorldStatusPage(tabId,listType,offset,limit)}catch(e){throw new Error('เรียก Shopee status API ไม่สำเร็จ: '+e.message)}
@@ -638,12 +736,13 @@ async function runRecentSync(tabId,fresh=true){
     const hubStatus=await hubJson(hub,`/api/status.php?account_id=${encodeURIComponent(aid)}`).catch(()=>null),initialPanOrders=Number(hubStatus?.account_purchase_orders??hubStatus?.purchase_orders??hubStatus?.orders??0)||0;
     let st=await getState(aid);
     if(!fresh&&(st.job!=='recent'||st.recentHub!==hub))throw new Error('checkpoint ไม่ตรงกับงานล่าสุดหรือ PAN URL กรุณาเริ่มอัปเดตช่วงล่าสุดใหม่');
+    if((fresh||st.done)&&st.pendingItemCount>0&&st.pendingHub&&st.pendingHub!==hub)throw new Error('PAN URL เปลี่ยนขณะมีออเดอร์ค้างตรวจ');
     if(fresh||st.done){
       const anchor=await hubJson(hub,`/api/sync_anchor.php?account_id=${encodeURIComponent(aid)}`);
       if(String(anchor.account_id)!==aid||!(anchor.cutoff_date===''||/^\d{4}-\d{2}-\d{2}$/.test(anchor.cutoff_date)))throw new Error('PAN ส่งข้อมูลจุดเริ่มต้นไม่ถูกต้อง');
-      st={job:'recent',recentEndpoint:'primary',recentHub:hub,cutoff:anchor.cutoff_date,latestSavedDate:anchor.latest_order_date,recentIndex:0,recentOffset:0,recentOldPages:0,recentSeen:[],scanId:crypto.randomUUID(),pages:0,orders:0,items:0,ignored:0,cancelled:0,dateUnknown:0,shopeeRecords:0,shopeeUniqueOrders:0,duplicateRecords:0,panInsertedOrders:0,panUpdatedOrders:0,cancelledDeleted:0,panOrders:initialPanOrders,syncSeenOrderNos:[]};
+      st={job:'recent',recentEndpoint:'primary',recentHub:hub,cutoff:anchor.cutoff_date,latestSavedDate:anchor.latest_order_date,recentIndex:0,recentOffset:0,recentOldPages:0,recentSeen:[],scanId:crypto.randomUUID(),pages:0,orders:0,items:0,ignored:0,cancelled:0,dateUnknown:0,shopeeRecords:0,shopeeUniqueOrders:0,duplicateRecords:0,panInsertedOrders:0,panUpdatedOrders:0,cancelledDeleted:0,panOrders:initialPanOrders,syncSeenOrderNos:[],pendingItemOrders:st.pendingItemOrders||[],pendingItemCount:(st.pendingItemOrders||[]).length,pendingReasons:pendingReasonCounts(st.pendingItemOrders||[]),pendingHub:hub,partial:false,scanComplete:false};
     }
-    st=await setState(aid,{...st,job:'recent',apiMode:'recent',accountUsername:account.username||account.nickname||'',running:true,paused:false,done:false,error:'',status:st.cutoff?`อัปเดตตั้งแต่ ${st.cutoff} · รวมช่วงทับซ้อนและรายการค้าง`:'ไม่มีวันที่อ้างอิงที่ปลอดภัย · ตรวจรายการทั้งหมดครั้งนี้'});
+    st=await setState(aid,{...st,pendingHub:hub,job:'recent',apiMode:'recent',accountUsername:account.username||account.nickname||'',running:true,paused:false,done:false,error:'',status:st.cutoff?`อัปเดตตั้งแต่ ${st.cutoff} · รวมช่วงทับซ้อนและรายการค้าง`:'ไม่มีวันที่อ้างอิงที่ปลอดภัย · ตรวจรายการทั้งหมดครั้งนี้'});
     const types=[7,8,9,12,3,4],limit=20;let retries=0;
     while(Number(st.recentIndex||0)<types.length){
       st=await getState(aid);if(st.paused){await setState(aid,{running:false,status:'พักอัปเดตช่วงล่าสุด'});return;}
@@ -704,10 +803,63 @@ async function runRecentSync(tabId,fresh=true){
       if(st.recentIndex<types.length)await sleep(650+Math.floor(Math.random()*550));
     }
     // Deliberately NO reconcile: older unvisited rows must retain their visibility.
-    await setState(aid,{running:false,done:true,status:'อัปเดตช่วงล่าสุดเสร็จ · เก็บข้อมูลเก่าครบตามเดิม'});
+    const pending=(st.pendingItemOrders||[]).length;
+    if(pending)await setState(aid,{running:false,done:false,partial:true,scanComplete:true,status:partialSyncText(pending)});
+    else await setState(aid,{running:false,done:true,partial:false,scanComplete:true,status:'อัปเดตช่วงล่าสุดเสร็จ · เก็บข้อมูลเก่าครบตามเดิม'});
   }catch(e){if(aid)await setState(aid,{running:false,error:String(e.message||e),status:'error'});else throw e;}
   finally{runningJob=null;}
 }
+/** Re-attempt only the quarantined Orders against the authenticated Buyer Detail.
+ * This does NOT replay unrelated orders or change any scan pagination cursor.
+ */
+async function retryPendingItemOrders(tabId){
+  if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');
+  runningJob='item_retry';let aid='';
+  try{
+    const cfg=await chrome.storage.local.get('hubUrl'),hub=cfg.hubUrl||DEFAULT_HUB;
+    const account=await accountForTab(tabId);aid=String(account.userid);
+    let st=await getState(aid);
+    if(st.pendingHub&&st.pendingHub!==hub)throw new Error('PAN URL ไม่ตรงกับรายการที่ค้างตรวจสินค้า · ไม่บันทึกข้ามฐาน');
+    const pending=Array.isArray(st.pendingItemOrders)?st.pendingItemOrders:[];
+    if(!pending.length){await setState(aid,{running:false,done:true,partial:false,pendingItemCount:0,status:'ไม่มีออเดอร์ที่ค้างตรวจสินค้า'});return;}
+    await setState(aid,{job:'item_retry',running:true,done:false,paused:false,error:'',partial:true,
+      pendingRetryDone:0,pendingRetryTotal:pending.length,status:`ตรวจ Buyer Detail อีกครั้ง ${pending.length} Order`});
+    for(let i=0;i<pending.length;i++){
+      const row=pending[i];st=await getState(aid);
+      if(st.paused){await setState(aid,{running:false,status:'หยุดตรวจรายการค้างชั่วคราว'});return;}
+      if(String((await accountForTab(tabId)).userid)!==aid)throw new Error('SESSION_BLOCK Shopee account switched during pending retry');
+      try{
+        const candidate=await resolveBuyerItemSnapshot(tabId,minimalOrderForPending(row),account);
+        if(candidate.status==='complete'&&candidate.normalized?.items?.length){
+          if(String(candidate.normalized.orderNo)!==String(row.orderNo))throw new Error('SESSION_BLOCK Buyer detail identity mismatch');
+          await postBatch(hub,candidate.normalized.items,{url:'buyer-detail-retry',jobType:'buyer_detail_recheck',scanId:''});
+          const current=await getState(aid);
+          const rest=mergePendingOrders(current.pendingItemOrders,[],[row.orderNo]);
+          await setState(aid,{pendingItemOrders:rest,pendingItemCount:rest.length,pendingReasons:pendingReasonCounts(rest),
+            pendingRetryDone:i+1,status:`ตรวจรายการค้าง ${i+1}/${pending.length} · ยืนยันและบันทึกแล้ว`});
+        }else{
+          const current=await getState(aid),reason=candidate.reason||'detail_unavailable';
+          const rest=(current.pendingItemOrders||[]).map(x=>x.orderNo===row.orderNo?{...x,reason}:x);
+          await setState(aid,{pendingItemOrders:rest,pendingItemCount:rest.length,pendingReasons:pendingReasonCounts(rest),
+            pendingRetryDone:i+1,status:`ตรวจรายการค้าง ${i+1}/${pending.length} · ยังไม่มีสินค้าที่เชื่อถือได้`});
+        }
+      }catch(err){
+        const msg=String(err?.message||err);
+        if(msg.startsWith('SESSION_BLOCK')||/HTTP 401|HTTP 403|HTTP 429/.test(msg))throw err;
+        const curr=await getState(aid);
+        const rest=(curr.pendingItemOrders||[]).map(x=>x.orderNo===row.orderNo?{...x,reason:'detail_retry_failed'}:x);
+        await setState(aid,{pendingItemOrders:rest,pendingItemCount:rest.length,pendingReasons:pendingReasonCounts(rest),
+          pendingRetryDone:i+1,status:`ตรวจรายการค้าง ${i+1}/${pending.length} · ยังต้องตรวจใหม่`});
+      }
+      await sleep(220);
+    }
+    st=await getState(aid);const left=(st.pendingItemOrders||[]).length;
+    await setState(aid,{running:false,partial:left>0,done:left===0,
+      status:left?partialSyncText(left):'ตรวจรายการค้างครบแล้ว · ดูผลใน PAN'});
+  }catch(e){if(aid)await setState(aid,{running:false,error:String(e?.message||e),status:'error'});else throw e;}
+  finally{runningJob=null;}
+}
+
 /** Recheck one order without changing Full/Recent Sync checkpoints or other orders. */
 async function findSingleOrderInShopee(tabId,target,account,onPage=async()=>{}){
   const identity=record=>txt(record?.info_card?.order_id??record?.info_card?.order_sn??record?.order_id??record?.order_sn??'');
@@ -798,7 +950,8 @@ function reportRecentError(e){chrome.runtime.sendMessage({type:'SYNC_ERROR',erro
 chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{(async()=>{
   if(msg?.type==='START_SYNC'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runSync(msg.tabId,true).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='START_RECENT'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runRecentSync(msg.tabId,true).catch(reportRecentError);sendResponse({ok:true});}
-  else if(msg?.type==='RESUME_SYNC'){const a=await accountForTab(msg.tabId);const st=await getState(String(a.userid));if(st.job==='recent')runRecentSync(msg.tabId,false).catch(reportRecentError);else if(st.job==='repair'&&!st.done)runRepair(msg.tabId,true);else runSync(msg.tabId,false);sendResponse({ok:true});}
+  else if(msg?.type==='RESUME_SYNC'){const a=await accountForTab(msg.tabId);const st=await getState(String(a.userid));if((st.scanComplete&&st.partial)||st.job==='item_retry')retryPendingItemOrders(msg.tabId).catch(reportRecentError);else if(st.job==='recent')runRecentSync(msg.tabId,false).catch(reportRecentError);else if(st.job==='repair'&&!st.done)runRepair(msg.tabId,true);else runSync(msg.tabId,false);sendResponse({ok:true});}
+  else if(msg?.type==='RETRY_ITEM_PENDING'){retryPendingItemOrders(msg.tabId).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='START_REPAIR'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runRepair(msg.tabId,false,false).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='START_REPAIR_ALL'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runRepair(msg.tabId,false,true).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='REFRESH_SINGLE_ORDER'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');refreshSingleOrder(msg.tabId,msg.orderNo).catch(reportRecentError);sendResponse({ok:true});}

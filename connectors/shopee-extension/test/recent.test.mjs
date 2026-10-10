@@ -288,7 +288,7 @@ test('v2.4.7 separates Shopee records, unique orders, duplicate reads and PAN in
 test('v2.4.8 mixed structural page stops before import so checkpoint cannot skip one bad order',async()=>{
   const f=await fixture();
   const bad=order('bad');bad.info_card.order_list_cards[0].shop_info={};
-  await assert.rejects(()=>f.ctx.processSyncRecords([order('ok'),bad],{userid:42,username:'fixture'},'http://localhost/pan','scan','https://shopee.co.th/user/purchase',[]),/บาง Order ไม่ตรง/);
+  await assert.rejects(()=>f.ctx.processSyncRecords([order('ok'),bad],{userid:42,username:'fixture'},'http://localhost/pan','scan','https://shopee.co.th/user/purchase',[]),/Shopee schema/);
   assert.equal(f.posts.length,0);
 });
 
