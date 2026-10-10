@@ -331,6 +331,55 @@ function pan_validate_import_batch(PDO $db, array $items): string {
     return $batchAccount;
 }
 
+/** Source precedence and no-regression constraint apply to every importer,
+ * including the server connector and direct API calls. This is checked inside
+ * the same transaction as the subsequent UPSERT + snapshot reconciliation.
+ */
+function pan_guard_buyer_item_snapshots(PDO $db, array $items): void {
+    $orders=[];
+    foreach($items as $r){
+        $no=trim((string)($r['order_no']??''));
+        if($no==='')continue;
+        $quality=(string)($r['item_snapshot_source']??'buyer_order_list_preview');
+        if(!in_array($quality,['buyer_order_list_preview','buyer_detail_complete'],true))
+            throw new RuntimeException('Unsupported buyer item snapshot provenance');
+        if(isset($orders[$no])&&$orders[$no]['quality']!==$quality)
+            throw new RuntimeException('Mixed Buyer item snapshot quality in one Order');
+        if(!isset($orders[$no]))$orders[$no]=['quality'=>$quality,'qty'=>0,'lines'=>0];
+        $orders[$no]['qty']+=(int)($r['quantity']??0);
+        $orders[$no]['lines']++;
+        if($quality==='buyer_detail_complete' && (int)($r['item_snapshot_complete']??0)!==1)
+            throw new RuntimeException('Buyer Detail rows require explicit complete-source evidence');
+    }
+    if(!$orders)return;
+    foreach(array_chunk(array_keys($orders),200) as $nos){
+        $placeholders=implode(',',array_fill(0,count($nos),'?'));
+        $stmt=$db->prepare("SELECT o.order_no, i.import_source, COUNT(*) lines, SUM(i.quantity) units
+          FROM orders o JOIN order_items i ON i.order_id=o.id
+          WHERE o.order_no IN ($placeholders) GROUP BY o.order_no,i.import_source");
+        $stmt->execute($nos);
+        $existing=[];
+        foreach($stmt->fetchAll(PDO::FETCH_ASSOC) as $r)
+            $existing[(string)$r['order_no']][]=$r;
+        foreach($nos as $no){
+            $next=$orders[$no];
+            $stored=$existing[$no]??[];
+            $priorQty=0;$priorLines=0;$trusted=false;
+            foreach($stored as $r){
+                $priorQty+=(int)$r['units'];$priorLines+=(int)$r['lines'];
+                if((string)$r['import_source']==='shopee_buyer_detail_verified')$trusted=true;
+            }
+            // A metadata-only detail response cannot downgrade a prior verified
+            // source. Neither can a smaller "complete" response silently delete
+            // historical units or lines; it needs a separate review process.
+            if($trusted&&$next['quality']!=='buyer_detail_complete')
+                throw new RuntimeException('Verified Buyer Detail exists; preview import cannot overwrite it');
+            if($trusted&&($next['qty']<$priorQty||$next['lines']<$priorLines))
+                throw new RuntimeException('Buyer Detail regression in item rows/units; order remains untouched');
+        }
+    }
+}
+
 /** Fail closed before mutating a user-attested order. Never silently erase a manual review line. */
 function pan_guard_attested_order_reimport(PDO $db, array $items, string $jobType): void {
     $incoming=[];
@@ -347,8 +396,16 @@ function pan_guard_attested_order_reimport(PDO $db, array $items, string $jobTyp
         $check->execute($part);
         foreach($check->fetchAll(PDO::FETCH_COLUMN) as $no){
             $no=(string)$no;
-            if($jobType!=='single_order_recheck')
-                throw new RuntimeException('An order has user-attested quantities; use verified single-order recheck before any new Full/Recent Sync can overwrite it');
+            // A complete authenticated Buyer Detail can reconcile a provisional
+            // user attestation AUTOMATICALLY when its total units agree. The
+            // detail may contain more source rows for the same SKU and is never
+            // required to preserve manual placeholder product keys.
+            $candidate=$incoming[$no]??[];
+            $automated=$candidate!==[];
+            foreach($candidate as $line)if(($line['item_snapshot_source']??'')!=='buyer_detail_complete'||
+                (int)($line['item_snapshot_complete']??0)!==1)$automated=false;
+            if(!$automated && $jobType!=='single_order_recheck')
+                throw new RuntimeException('User-attested quantities are protected from incomplete Buyer snapshots');
             $saved=$db->prepare('SELECT product_key,product_name,variant_name,quantity,import_source FROM order_items WHERE order_id=(SELECT id FROM orders WHERE order_no=?)');
             $saved->execute([$no]);$savedRows=$saved->fetchAll(PDO::FETCH_ASSOC);
             $expectedTotal=0;$expectedLines=0;$oldKnown=[];$extraKnown=[];
@@ -357,7 +414,7 @@ function pan_guard_attested_order_reimport(PDO $db, array $items, string $jobTyp
                 if(str_starts_with((string)$line['product_key'],'pan-manual:'))$extraKnown[]=$line;
                 else $oldKnown[(string)$line['product_key']]=(int)$line['quantity'];
             }
-            $candidate=$incoming[$no]??[];$seen=[];$qty=0;
+            $seen=[];$qty=0;
             foreach($candidate as $line){
                 $key=trim((string)($line['product_key']??''));
                 $units=(int)($line['quantity']??0);
@@ -365,7 +422,8 @@ function pan_guard_attested_order_reimport(PDO $db, array $items, string $jobTyp
                 $seen[$key]=$line;$qty+=$units;
             }
             if($qty!==$expectedTotal||count($candidate)<$expectedLines)
-                throw new RuntimeException('Verified single-order recheck disagrees with the user-confirmed number of purchased pieces and lines');
+                throw new RuntimeException('Buyer snapshot disagrees with user-confirmed purchased units/lines');
+            if($automated)continue; // trusted full Buyer source, no need for old manually invented row keys
             foreach($oldKnown as $key=>$savedUnits){
                 if(!isset($seen[$key])||(int)$seen[$key]['quantity']!==$savedUnits)
                     throw new RuntimeException('Verified single-order recheck disagrees with a known saved variant/quantity');
@@ -392,7 +450,7 @@ function import_collector_payload(PDO $db,array $payload):array {
     ensure_schema_v200($db);$items=$payload['items']??null;if(!is_array($items)||!$items)throw new RuntimeException('ไม่พบรายการจาก Collector');if(count($items)>2000)throw new RuntimeException('หนึ่งครั้งนำเข้าได้สูงสุด 2,000 รายการ');
     $source=substr((string)($payload['source']??'collector'),0,60);$sourceUrl=substr((string)($payload['source_url']??''),0,1000);$jobType=substr((string)($payload['job_type']??'sync'),0,30);$scanId=substr((string)($payload['scan_id']??''),0,80);
     $orders=[];$existingOrders=[];$previous=[];$orderItemKeys=[];$itemCount=0;$reviewCount=0;$batchAccountId='';$batchUsername='';$db->beginTransaction();
-    try{pan_validate_import_batch($db,$items);pan_guard_attested_order_reimport($db,$items,$jobType);foreach($items as $r){if(!is_array($r))continue;$name=trim((string)($r['product_name']??''));if($name==='')continue;$key=trim((string)($r['product_key']??''));if($key==='')continue;
+    try{pan_validate_import_batch($db,$items);pan_guard_buyer_item_snapshots($db,$items);pan_guard_attested_order_reimport($db,$items,$jobType);foreach($items as $r){if(!is_array($r))continue;$name=trim((string)($r['product_name']??''));if($name==='')continue;$key=trim((string)($r['product_key']??''));if($key==='')continue;
       $orderNo=trim((string)($r['order_no']??''));if($orderNo==='')continue;
       $date=(string)($r['order_date']??'');$dateSource=trim((string)($r['date_source']??''));if($date!==''&&!preg_match('/^20\\d{2}-\\d{2}-\\d{2}$/',$date))continue;if($date===''&&$dateSource!=='unknown')continue;
       $accountId=trim((string)($r['source_account_id']??''));if($accountId==='')continue;$username=trim((string)($r['source_account_username']??''));$batchAccountId=$accountId;$batchUsername=$username;
@@ -410,7 +468,7 @@ function import_collector_payload(PDO $db,array $payload):array {
       $needs=($shop===''||$price<=0)?1:0;$rawText=substr((string)($r['raw_text']??''),0,8000);
       $familyKey=trim((string)($r['product_family_key']??''));if($familyKey==='')$familyKey=pan_family_key($name);
       $it=$db->prepare(db_item_upsert_sql($db));
-      $it->execute([':oid'=>$orderId,':key'=>$key,':name'=>$name,':var'=>(string)($r['variant_name']??''),':img'=>(string)($r['image_url']??''),':url'=>(string)($r['product_url']??''),':qty'=>$qty,':price'=>$price,':net'=>$actual,':review'=>$needs,':raw'=>$rawText,':source'=>'shopee_extension_v2',':orig'=>(float)($r['original_price']??0),':status'=>$orderStatus,':json'=>substr((string)($r['raw_json']??''),0,24000),':alloc'=>(float)($r['allocated_discount']??0),':line'=>$line,':actual'=>$actual,':shopid'=>(string)($r['marketplace_shop_id']??''),':itemid'=>(string)($r['marketplace_item_id']??''),':modelid'=>(string)($r['marketplace_model_id']??''),':catid'=>(string)($r['marketplace_category_id']??''),':catname'=>(string)($r['marketplace_category_name']??''),':catpath'=>(string)($r['marketplace_category_path']??''),':pancat'=>(string)($r['pan_category_name']??''),':catsource'=>(string)($r['category_source']??''),':catupdated'=>(string)($r['category_updated_at']??''),':familykey'=>$familyKey,':familyname'=>(string)($r['product_family_name']??$name)]);
+      $it->execute([':oid'=>$orderId,':key'=>$key,':name'=>$name,':var'=>(string)($r['variant_name']??''),':img'=>(string)($r['image_url']??''),':url'=>(string)($r['product_url']??''),':qty'=>$qty,':price'=>$price,':net'=>$actual,':review'=>$needs,':raw'=>$rawText,':source'=>(($r['item_snapshot_source']??'')==='buyer_detail_complete'?'shopee_buyer_detail_verified':'shopee_extension_v2'),':orig'=>(float)($r['original_price']??0),':status'=>$orderStatus,':json'=>substr((string)($r['raw_json']??''),0,24000),':alloc'=>(float)($r['allocated_discount']??0),':line'=>$line,':actual'=>$actual,':shopid'=>(string)($r['marketplace_shop_id']??''),':itemid'=>(string)($r['marketplace_item_id']??''),':modelid'=>(string)($r['marketplace_model_id']??''),':catid'=>(string)($r['marketplace_category_id']??''),':catname'=>(string)($r['marketplace_category_name']??''),':catpath'=>(string)($r['marketplace_category_path']??''),':pancat'=>(string)($r['pan_category_name']??''),':catsource'=>(string)($r['category_source']??''),':catupdated'=>(string)($r['category_updated_at']??''),':familykey'=>$familyKey,':familyname'=>(string)($r['product_family_name']??$name)]);
       $orders[$orderNo]=$orderId;$orderItemKeys[$orderNo][$key]=1;$itemCount++;$reviewCount+=$needs;
     }
     // Snapshot reconciliation: each normalized order record contains the complete visible item set for that order.

@@ -26,6 +26,9 @@ async function fixture({pages,seed={},failImport=false,cutoff='2026-09-08',accou
     return {ok:true,status:200,text:async()=>'"{\"ok\":true}"'.slice(1,-1)};
   },chrome:{storage:{local:{get:async keys=>Object.fromEntries((Array.isArray(keys)?keys:[keys]).map(k=>[k,structuredClone(storage[k])])),set:async values=>Object.assign(storage,structuredClone(values))}},runtime:{sendMessage:async()=>{},onMessage:{addListener(){}}},scripting:{executeScript:async({func,args})=>{
     if(func.toString().includes('get_account_info'))return [{result:{ok:true,account:{userid:accountIds[identities++]||42,username:'fixture'}}}];
+    // Buyer detail calls are separate from paginated list reads. This fixture
+    // intentionally offers metadata-only detail so preview fallback remains tested.
+    if(func.toString().includes('get_order_detail'))return [{result:{ok:true,http:200,json:{error:0,data:{pc_processing_info:{}}},url:'https://shopee.co.th/api/v4/order/get_order_detail'}}];
     const primary=func.toString().includes('get_all_order_and_checkout_list');
     const type=primary?'primary':args[0],offset=primary?args[0]:args[1];requests.push({type,offset});
     const result=pages?.(type,offset)||{data:{details_list:[],next_offset:-1}};

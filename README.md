@@ -1,4 +1,4 @@
-# PAN 2.5.10 — น้องแพน · Marketplace & Commerce Assistant
+# PAN 2.5.11 — น้องแพน · Marketplace & Commerce Assistant
 
 **PAN** คือชื่อผลิตภัณฑ์ใหม่ของโปรเจกต์เดิม **ITOOM Commerce Hub** โดยใช้ชื่อภาษาไทยว่า **น้องแพน** และอยู่ภายใต้แบรนด์ **itoom.work**
 
@@ -22,7 +22,7 @@
 
 ## Roadmap และงานที่ค้าง
 
-แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.9 + Shopee Connector v2.4.14 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
+แผนงาน PAN มี 7 เฟส ติดตามที่ [ROADMAP.md](ROADMAP.md), [GitHub Issues #1–#7](https://github.com/herogamee/PAN/issues), [Acceptance Matrix](docs/ACCEPTANCE-MATRIX.md) และ [Staging Acceptance](docs/STAGING-ACCEPTANCE.md). PAN Core v2.5.11 + Shopee Connector v2.4.15 มี Source และชุดทดสอบ แต่ **ยังไม่ผ่าน Production Acceptance** โดยเฉพาะการตรวจบัญชี Shopee จริง, Payment/Shipping/Repair, Backup/Restore และความถูกต้องของฐานข้อมูลจริง
 
 ## PAN 2.5.6 — ถอดวันที่ได้รับพัสดุที่ Buyer API ยังยืนยันไม่ได้
 
@@ -356,6 +356,18 @@ Brand: **itoom.work**
 ## PAN 2.5.1 maintenance update
 
 See [`docs/PAN-v2.5.1-HANDOFF.md`](docs/PAN-v2.5.1-HANDOFF.md) for 2.5.1 fixes, test/deployment instructions, and explicit production-validation limitations. Historical v2.5.0 release notes are retained unchanged.
+
+## PAN 2.5.11 — Buyer Order Item Detail อัตโนมัติ (ทดลองกับบัญชีจริงยังไม่ผ่าน Gate)
+
+- Shopee Connector **2.4.15** ใช้บัญชี Shopee ของผู้ซื้อที่ Login อยู่ดึง **Buyer Order Detail** ก่อนการ import แต่ละคำสั่งซื้อใน Full/Recent Sync โดยไม่ต้องกรอกยอดชิ้นสินค้าเอง
+- รายการซื้อซ้ำที่มี item/model/variant เหมือนกันจะยังเป็น **คนละบรรทัด** ด้วย source-path identity; ตัวอย่าง 4 บรรทัด x(1,1,2,1) = **5 ชิ้น**
+- หาก Detail ส่งรายการสินค้าแบบ `order_list_cards`, `item_list` หรือ `product_info.item_groups` ที่ตรวจสอบโครงสร้างได้ จะบันทึกบรรทัดสินค้าพร้อม provenance และจำนวนจริง ถ้า Detail คืนมาเฉพาะ metadata จะไม่แอบอ้างว่าตรวจรายการสินค้าครบ
+- API import ตรวจ snapshot/account ก่อนแก้ DB; Detail ที่ตรวจแล้วมีสิทธิ์สูงกว่าข้อมูลย่อใน Order List และข้อมูลย่อจะเขียนทับจำนวน/บรรทัดที่ตรวจแล้วไม่ได้
+- **ตรวจเฉพาะ Order** ยังใช้ได้ แต่ต้องกรอกแค่เลข Order, ไม่กรอกจำนวนรวม; ถ้า API ไม่มีรายละเอียดที่เชื่อถือได้ จะไม่แก้ข้อมูลเดิม
+- รองรับการแทนแถวจำนวนซึ่งเคยให้ผู้ใช้ยืนยันไว้ เมื่อ Buyer Detail ให้หลักฐานครบและผลรวมชิ้นตรงกัน โดยไม่ลบ/สมมติราคาใหม่
+- [Release Notes v2.5.11](RELEASE-NOTES-v2.5.11.md) · [Acceptance Plan](docs/PAN-v2.5.11-BUYER-DETAIL-ACCEPTANCE.md) · [GitHub P0 Issue #8](https://github.com/herogamee/PAN/issues/8)
+
+**สำคัญ:** ยังไม่ได้รับตัวอย่าง JSON จริงจาก session Shopee ของเจ้าของบัญชี จึงเป็น **implementation candidate** ที่ผ่าน synthetic tests ไม่ใช่การยืนยันว่า Order จริง 4 บรรทัดจะถูกดึงได้ทุกครั้ง หาก Buyer API คืนแต่ข้อมูลย่อ ระบบจะรายงานสถานะรอการตรวจสอบแทนการแต่งจำนวนหรือแก้ DB เอง
 
 ## PAN Core 2.5.10 — บันทึกจำนวนยืนยันโดยผู้ใช้ / ป้องกัน Sync ทับข้อมูลที่แก้
 

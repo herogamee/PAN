@@ -1,0 +1,12 @@
+PAN v2.5.11 / Shopee Connector v2.4.15 — SOURCE PACKAGE
+
+1. Back up code, database and storage/config.php from your active PAN installation.
+2. Stage the Complete package or overlay only the exact 2.5.10→2.5.11 Patch files.
+3. Keep storage/config.php and all current SQLite/MySQL runtime files untouched.
+4. In Chrome extensions, reload unpacked PAN Shopee Connector 2.4.15.
+5. Inspect PAN Core VERSION=2.5.11 and api/status.php connector_version=2.4.15.
+6. Check Buyer account identity before running targeted auto refresh (only the Order number; no manual quantity).
+7. For existing data, use a staging copy before Full/Recent Sync. Unverified Buyer Detail must not overwrite higher-quality stored rows.
+8. Synthetic CI passing does NOT prove this Shopee account's private API exposes all item lines; real acceptance is pending.
+
+No production SQLite data, credentials, cookies, OTP, buyer details or profiles are included.

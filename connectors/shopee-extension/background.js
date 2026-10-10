@@ -1,5 +1,5 @@
 const DEFAULT_HUB='https://pan.itoom.work';
-const VERSION='2.4.14';
+const VERSION='2.4.15';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const txt=v=>v==null?'':String(v);
 const num=v=>{const n=Number(v);if(!Number.isFinite(n))return 0;return Math.abs(n)>=100000?n/100000:n};
@@ -190,7 +190,7 @@ function productLineKey(shopId,itemId,modelId,name,variant){
   return `shopee:${txt(shopId||0)}:${identity}:${v?'variant-'+lineIdentityHash(v):'0'}`;
 }
 /** Parsed snapshot is all-or-nothing so DB never prunes good variants from an ambiguous page. */
-function normalizeOrder(raw,account,dateOverride=null,detail={}){
+function normalizeOrder(raw,account,dateOverride=null,detail={},options={}){
   const d=raw||{},info=d?.info_card||{};
   const cards=Array.isArray(info?.order_list_cards)?info.order_list_cards:[];
   if(!cards.length)return {orderNo:'',items:[],ignoredReason:'missing_order_cards'};
@@ -206,17 +206,28 @@ function normalizeOrder(raw,account,dateOverride=null,detail={}){
   const shopId=shop?.shop_id??shop?.shopid??cards[0]?.shop_id??d?.shop_id??null;
   const shopName=txt(shop?.shop_name||shop?.username||d?.shop_name||'');
   if(!shopName)return {orderNo:identity.id,items:[],ignoredReason:'missing_shop'};
+  // A purchased line is NOT synonymous with a SKU. Two distinct rows with the
+  // same shop/item/model (for example split shipments or repeated variants)
+  // must remain independently stored. The stable source path is carried in the
+  // product key because the legacy SQL UNIQUE(order_id, product_key) is kept.
   const flat=[];
-  for(const c of cards){
+  for(let ci=0;ci<cards.length;ci++){
+    const c=cards[ci];
     const subShopId=c?.shop_info?.shop_id??c?.shop_info?.shopid??c?.shop_id??shopId;
     if(shopId!=null&&subShopId!=null&&String(subShopId)!==String(shopId))
       return {orderNo:identity.id,items:[],ignoredReason:'mixed_shop_cards'};
     const groups=c?.product_info?.item_groups;
-    if(Array.isArray(groups))for(const g of groups)if(Array.isArray(g?.items))flat.push(...g.items);
+    if(Array.isArray(groups))for(let gi=0;gi<groups.length;gi++){
+      const group=groups[gi];
+      if(Array.isArray(group?.items))for(let ii=0;ii<group.items.length;ii++){
+        flat.push({card:group.items[ii],path:`card:${ci}/group:${gi}/item:${ii}`});
+      }
+    }
   }
   if(!flat.length)return {orderNo:identity.id,items:[],ignoredReason:'missing_items'};
-  const preparedByKey=new Map();let returnedQty=0;
-  for(const card of flat){
+  const prepared=[];let returnedQty=0;
+  for(const row of flat){
+    const card=row.card;
     const count=purchasedItemQuantity(card);
     if(!count.ok)return {orderNo:identity.id,items:[],ignoredReason:count.reason};
     if(Number(card?.status)===3){returnedQty+=count.quantity;continue;}
@@ -224,22 +235,16 @@ function normalizeOrder(raw,account,dateOverride=null,detail={}){
     const modelId=card?.model_id??card?.modelid??card?.variation_id??0;
     const name=txt(card?.name||card?.item_name||'').trim();
     const variant=txt(card?.model_name||card?.variation||card?.variation_name||'').trim();
-    const sell=num(card?.item_price??card?.price??0);
+    const sell=num(card?.item_price??card?.model_discounted_price??card?.model_original_price??card?.price??0);
     if(!name||!Number.isFinite(sell)||sell<0)return {orderNo:identity.id,items:[],ignoredReason:'missing_valid_items'};
     const original=num(card?.original_price??card?.model_original_price??card?.price_before_discount??card?.item_price??0);
-    const key=productLineKey(shopId,itemId,modelId,name,variant);
-    const old=preparedByKey.get(key);
-    if(old){
-      // The same SKU may occur in several shipping groups, but different variants
-      // or prices sharing a key are an identity error, never last-write-wins.
-      if(old.name!==name||normalizedVariantText(old.variant)!==normalizedVariantText(variant)||old.sell!==sell)
-        return {orderNo:identity.id,items:[],ignoredReason:'product_identity_collision'};
-      old.qty+=count.quantity;old.line+=sell*count.quantity;
-      old.qtySources.add(count.field);
-    }else preparedByKey.set(key,{card,itemId,modelId,name,variant,qty:count.quantity,sell,original,
-      line:sell*count.quantity,key,qtySources:new Set([count.field])});
+    const skuKey=productLineKey(shopId,itemId,modelId,name,variant);
+    const explicitLineId=txt(card?.order_item_id??card?.order_line_id??card?.line_item_id??card?.line_id??'');
+    const key=`${skuKey}:line-${lineIdentityHash(row.path)}`;
+    prepared.push({card,itemId,modelId,name,variant,qty:count.quantity,sell,original,
+      line:sell*count.quantity,key,sourceLinePath:row.path,sourceLineId:explicitLineId,
+      qtySources:[count.field]});
   }
-  const prepared=[...preparedByKey.values()];
   if(!prepared.length)return {orderNo:identity.id,items:[],ignoredReason:'missing_valid_items'};
   const itemQty=prepared.reduce((sum,p)=>sum+p.qty,0);
   const announced=Number(info?.product_count);
@@ -265,8 +270,14 @@ function normalizeOrder(raw,account,dateOverride=null,detail={}){
   const discountTotal=merchandisePaid!=null?Math.max(0,rawSubtotal-merchandisePaid):0;
   const status=statusFromListType(listType),purchaseState=[3,7,8].includes(listType)?'purchase':'non_purchase';
   const out=[];
+  const itemSnapshotSource=options?.source==='buyer_detail_complete'?'buyer_detail_complete':'buyer_order_list_preview';
   for(const p of prepared){
-    const actualLine=p.line*ratio,actualUnit=actualLine/p.qty;
+    // Unit price in Buyer Detail is the actual product price Shopee provided.
+    // Do not present a proportional allocation of whole-order vouchers/coins
+    // as if it were a confirmed per-product checkout price.
+    const directItemPrice=itemSnapshotSource==='buyer_detail_complete';
+    const actualLine=directItemPrice?p.line:p.line*ratio;
+    const actualUnit=directItemPrice?p.sell:actualLine/p.qty;
     const card=p.card,img=card?.image??card?.image_url??card?.image_info??'';
     const image=typeof img==='object'?(img?.image_url||img?.image_id||''):img;
     const categoryId=txt(card?.category_id??card?.catid??card?.category?.category_id??card?.category?.catid??'');
@@ -275,13 +286,16 @@ function normalizeOrder(raw,account,dateOverride=null,detail={}){
     const familyName=normalizeFamilyName(p.name);
     out.push({platform:'shopee_th',order_no:identity.id,order_date:orderDate,order_created_at:createdAt,
       shop_name:shopName,product_key:p.key,product_name:p.name,variant_name:p.variant,
+      item_snapshot_source:itemSnapshotSource,item_snapshot_complete:itemSnapshotSource==='buyer_detail_complete'?1:0,
       image_url:imageUrl(image),product_url:productUrl(shopId,p.itemId),quantity:p.qty,
       original_price:p.original,purchase_price:p.sell,net_unit_price:actualUnit,
       actual_unit_price:actualUnit,actual_line_total:actualLine,
-      allocated_discount:Math.max(0,p.line-actualLine),total_paid:Math.max(0,finalTotal),
+      allocated_discount:directItemPrice?0:Math.max(0,p.line-actualLine),total_paid:Math.max(0,finalTotal),
       raw_subtotal:rawSubtotal,subtotal:rawSubtotal,merchandise_paid:merchandisePaid==null?0:merchandisePaid,
       shipping_fee:shippingFee,voucher_discount:0,coins_discount:0,platform_discount:0,
-      discount_total:discountTotal,pricing_method:pricingMethod,order_status:status,list_type:listType,
+      discount_total:directItemPrice?0:discountTotal,
+      pricing_method:directItemPrice?'buyer_detail_unit_price_unallocated':pricingMethod,
+      order_status:status,list_type:listType,
       purchase_state:purchaseState,validation_state:'verified_v200',
       source_account_id:txt(account?.userid||''),source_account_username:txt(account?.username||account?.nickname||''),
       date_source:dt?.path||'unknown',identity_source:identity.source,
@@ -293,11 +307,97 @@ function normalizeOrder(raw,account,dateOverride=null,detail={}){
       raw_json:JSON.stringify({order_id:identity.id,list_type:listType,order_status:status,
         date_source:dt?.path||'unknown',shop_id:shopId,item_id:p.itemId,model_id:p.modelId,
         category_id:categoryId,category_name:categoryName,item_price:p.sell,
-        quantity:p.qty,quantity_sources:[...p.qtySources],source_product_count:Number.isSafeInteger(announced)?announced:null,
+        quantity:p.qty,quantity_sources:p.qtySources,source_line_path:p.sourceLinePath,
+        source_line_id:p.sourceLineId,item_snapshot_source:itemSnapshotSource,
+        source_product_count:Number.isSafeInteger(announced)?announced:null,
         normalized_total_quantity:itemQty,final_total:finalTotal,pricing_method:pricingMethod,
         source_account_id:txt(account?.userid||'')})});
   }
-  return {orderNo:identity.id,items:out,itemQuantity:itemQty,sourceProductCount:Number.isSafeInteger(announced)?announced:null,ignoredReason:''};
+  return {orderNo:identity.id,items:out,itemQuantity:itemQty,sourceLines:flat.length,
+    itemSnapshotSource,sourceProductCount:Number.isSafeInteger(announced)?announced:null,ignoredReason:''};
+}
+
+/** Get item rows from a buyer Order Detail response, not from the condensed
+ * Order List. If Shopee changes shape, do not declare a complete snapshot.
+ * This never uses seller Open Platform endpoints or private browser cookies.
+ */
+function buyerDetailItemCandidate(json,listRecord,account){
+  const data=json?.data;
+  if(!data||typeof data!=='object')return {status:'unavailable',reason:'detail_missing_data'};
+  const base=listRecord||{};
+  const baseInfo=base?.info_card||{};
+  const expected=txt(baseInfo.order_id??baseInfo.order_sn??base.order_id??base.order_sn);
+  const nodes=[
+    ['data',data],['data.order_detail',data?.order_detail],
+    ['data.order_list_detail',data?.order_list_detail],['data.order_info',data?.order_info],
+    ['data.order_data',data?.order_data],['data.new_data',data?.new_data]
+  ];
+  const candidates=[];
+  for(const [path,v] of nodes){
+    if(!v||typeof v!=='object'||Array.isArray(v))continue;
+    const info=v.info_card||{};
+    const reported=txt(info.order_id??info.order_sn??v.order_id??v.order_sn);
+    if(reported&&expected&&reported!==expected)return {status:'error',reason:'buyer_detail_identity_mismatch'};
+    let cards=info.order_list_cards||v.order_list_cards;
+    if(!Array.isArray(cards)||!cards.length){
+      if(Array.isArray(v?.product_info?.item_groups)){
+        cards=[{shop_info:baseInfo?.order_list_cards?.[0]?.shop_info||v.shop_info||{},
+          product_info:{item_groups:v.product_info.item_groups}}];
+      }else if(Array.isArray(v.item_list)&&v.item_list.length){
+        cards=[{shop_info:baseInfo?.order_list_cards?.[0]?.shop_info||v.shop_info||{},
+          product_info:{item_groups:[{items:v.item_list}]}}];
+      }else if(Array.isArray(v.package_list)&&v.package_list.length){
+        const groups=v.package_list.map(p=>({items:p?.item_list||p?.items||[]})).filter(g=>Array.isArray(g.items)&&g.items.length);
+        if(groups.length)cards=[{shop_info:baseInfo?.order_list_cards?.[0]?.shop_info||v.shop_info||{},product_info:{item_groups:groups}}];
+      }
+    }
+    if(!Array.isArray(cards)||!cards.length)continue;
+    const record={...base,...v,list_type:Number(base.list_type??v.list_type),
+      info_card:{...baseInfo,...info,order_id:expected||reported,
+        order_list_cards:cards}};
+    // Metadata from the same response may have no recognized order timestamp;
+    // preserve the known order-creation value from the list instead.
+    const dt=extractBestListDate(record)||extractBestListDate(base);
+    const norm=normalizeOrder(record,account,dt,{}, {source:'buyer_detail_complete'});
+    if(norm.ignoredReason)return {status:'error',reason:'buyer_detail_'+norm.ignoredReason};
+    // A declared count can mean units or rows; both interpretations must not
+    // contradict the detail. Never fill missing quantity with a guessed value.
+    const declared=Number(info.product_count??v.product_count);
+    if(Number.isSafeInteger(declared)&&declared>0&&
+       declared>norm.itemQuantity&&declared>norm.items.length)
+      return {status:'error',reason:'buyer_detail_count_exceeds_items'};
+    candidates.push({path,record,normalized:norm});
+  }
+  if(!candidates.length)return {status:'unavailable',reason:'buyer_detail_has_no_items'};
+  // Nested representations of one order may differ. Never choose the longest
+  // array by guesswork; a disagreement is an explicit data-quality failure.
+  if(candidates.length>1){
+    const fingerprints=candidates.map(c=>JSON.stringify(c.normalized.items.map(i=>[
+      i.marketplace_item_id,i.marketplace_model_id,i.variant_name,i.quantity,i.purchase_price
+    ])));
+    if(new Set(fingerprints).size!==1)return {status:'error',reason:'conflicting_buyer_detail_item_representations'};
+  }
+  return {status:'complete',...candidates[0]};
+}
+
+/** Authenticated buyer detail reads precede a page's database mutation. A
+ * metadata-only response is visibly marked unverified rather than invented.
+ */
+async function resolveBuyerItemSnapshot(tabId,order,account){
+  const no=txt(order?.info_card?.order_id??order?.info_card?.order_sn??order?.order_id??order?.order_sn);
+  if(!no)throw new Error('Buyer order identity missing during detail audit');
+  if(String((await accountForTab(tabId)).userid)!==String(account.userid))
+    throw new Error('SESSION_BLOCK Shopee account switched before item audit');
+  const res=await mainWorldDetail(tabId,no);
+  const code=Number(res?.json?.error||0);
+  if([401,403,429].includes(Number(res?.http))||code===90309999)
+    throw new Error(`SESSION_BLOCK Shopee detail denied HTTP ${res?.http||0} code ${code}`);
+  if(!res?.ok||code!==0||!res?.json?.data)
+    return {status:'unavailable',reason:'detail_unavailable'};
+  const candidate=buyerDetailItemCandidate(res.json,order,account);
+  if(candidate.status==='complete' && String((await accountForTab(tabId)).userid)!==String(account.userid))
+    throw new Error('SESSION_BLOCK Shopee account switched after item audit');
+  return {...candidate,detailJson:res.json};
 }
 
 async function getAllStates(){return (await chrome.storage.local.get('syncStates')).syncStates||{};}
@@ -306,7 +406,26 @@ async function setState(accountId,patch){const all=await getAllStates(),key=Stri
 async function hubJson(hub,path,opts={}){const cfg=await chrome.storage.local.get('apiKey');opts={...opts,headers:{...(opts.headers||{}),'X-PAN-Key':cfg.apiKey||''}};const r=await fetch(hub.replace(/\/$/,'')+path,opts);const t=await r.text();let j;try{j=JSON.parse(t)}catch{throw new Error(`PAN HTTP ${r.status}: ${t.slice(0,180)}`)}if(!r.ok||j.ok===false)throw new Error(j.error||`PAN HTTP ${r.status}`);return j;}
 async function postBatch(hub,items,meta){if(!items.length)return {};return hubJson(hub,'/api/import.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:'shopee_extension_v2',source_url:meta.url,job_type:meta.jobType||'sync',scan_id:meta.scanId,items})});}
 async function enrichOne(hub,tabId,account,orderNo,listType=0){const r=await mainWorldDetail(tabId,orderNo),apiError=Number(r?.json?.error||0);if(r?.http===401||r?.http===403)throw new Error(`SESSION_BLOCK HTTP ${r.http}`);if(apiError===90309999)throw new Error('SESSION_BLOCK Shopee anti-fraud 90309999');if(apiError!==0)throw new Error(`Shopee API error ${apiError}`);if(!r?.ok||!r?.json?.data)throw new Error(`HTTP ${r?.http||0} / detail data empty`);const meta=detailMeta(r.json);return hubJson(hub,'/api/enrich.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order_no:String(orderNo),list_type:Number(listType||0),source_account_id:String(account.userid),source_account_username:account.username||account.nickname||'',order_status:statusFromListType(listType),...meta})});}
-async function autoEnrichOrders(hub,tabId,account,rows){let ok=0,errors=0,lastError='';for(const row of rows.slice(0,30)){try{if(String((await accountForTab(tabId)).userid)!==String(account.userid))throw new Error('SESSION_BLOCK บัญชี Shopee เปลี่ยนระหว่างเติมรายละเอียด');await enrichOne(hub,tabId,account,row.order_no,row.list_type);ok++;}catch(e){lastError=String(e.message||e);errors++;if(lastError.startsWith('SESSION_BLOCK'))throw new Error(lastError);}await sleep(260+Math.floor(Math.random()*180));}return {ok,errors,lastError};}
+async function autoEnrichOrders(hub,tabId,account,rows,cachedMetas=new Map()){
+  let ok=0,errors=0,lastError='';
+  for(const row of rows.slice(0,30)){
+    try{
+      if(String((await accountForTab(tabId)).userid)!==String(account.userid))
+        throw new Error('SESSION_BLOCK บัญชี Shopee เปลี่ยนระหว่างเติมรายละเอียด');
+      const cached=cachedMetas.get(String(row.order_no));
+      if(cached){
+        await hubJson(hub,'/api/enrich.php',{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({order_no:String(row.order_no),list_type:Number(row.list_type||0),
+            source_account_id:String(account.userid),source_account_username:account.username||account.nickname||'',
+            order_status:statusFromListType(row.list_type),...cached})});
+      }else await enrichOne(hub,tabId,account,row.order_no,row.list_type);
+      ok++;
+    }catch(e){lastError=String(e.message||e);errors++;
+      if(lastError.startsWith('SESSION_BLOCK'))throw new Error(lastError);}
+    await sleep(180);
+  }
+  return {ok,errors,lastError};
+}
 async function postCancelled(hub,accountId,orderNos){if(!orderNos.length)return {deleted:0};return hubJson(hub,'/api/cancelled.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account_id:String(accountId),order_nos:[...new Set(orderNos.map(String))]})});}
 async function accountForTab(tabId){const ai=await mainWorldAccount(tabId);if(!ai?.ok||!ai?.account?.userid)throw new Error(`ยืนยัน Shopee User ID ไม่สำเร็จ · HTTP ${ai?.http??0} · error ${ai?.json_error??''}`);return ai.account;}
 async function resolveDetail(tabId,orderId){const r=await mainWorldDetail(tabId,orderId);if(r?.http===401||r?.http===403)throw new Error(`Shopee HTTP ${r.http} Order Detail`);if(Number(r?.json?.error||0)===90309999)throw new Error('Shopee anti-fraud 90309999 ที่ Order Detail');if(!r?.ok||!r?.json?.data)return null;return detailMeta(r.json);}
@@ -314,39 +433,58 @@ async function resolveDetail(tabId,orderId){const r=await mainWorldDetail(tabId,
 let runningJob=null;
 async function processSyncRecords(raw,account,hub,scanId,pageUrl,seenOrderNos=[],options={}){
   const batch=[],cancelledNos=[];let orderCount=0,ignored=0,cancelled=0,dateUnknown=0,newUnique=0,duplicateRecords=0;const reasonCounts={};
-  const pageOrderSnapshots=new Map();
+  const pageOrderSnapshots=new Map(),detailMetas=new Map();
+  let buyerDetailComplete=0,buyerDetailPreview=0;
   const seen=new Set((Array.isArray(seenOrderNos)?seenOrderNos:[]).map(String));
   for(const r of raw){
-    const n=normalizeOrder(r,account);
+    let n=normalizeOrder(r,account);
     if(n.orderNo){const k=String(n.orderNo);if(seen.has(k))duplicateRecords++;else{seen.add(k);newUnique++;}}
     if(n.ignoredReason==='cancelled_order'){
       cancelled++;ignored++;if(n.orderNo)cancelledNos.push(n.orderNo);
       reasonCounts.cancelled_order=(reasonCounts.cancelled_order||0)+1;continue;
     }
     if(!extractBestListDate(r))dateUnknown++;
-    if(n.items.length){
-      const fingerprint=JSON.stringify(n.items.map(x=>[x.product_key,x.variant_name,x.quantity,x.purchase_price]).sort((a,b)=>a[0].localeCompare(b[0])));
-      const previous=pageOrderSnapshots.get(n.orderNo);
+    const knownOrderId=txt(n.orderNo||r?.info_card?.order_id||r?.info_card?.order_sn||r?.order_id||r?.order_sn);
+    if(knownOrderId && (n.items.length||options.autoEnrich&&options.tabId)){
+      // An abbreviated list can fail quantity validation even while the
+      // authenticated Detail API contains every purchased row. Re-fetch detail
+      // BEFORE treating a preview as an unrecoverable structural error.
+      const listFingerprint=JSON.stringify({reason:n.ignoredReason||'',
+        rows:n.items?.map(x=>[x.product_key,x.variant_name,x.quantity,x.purchase_price])||[]});
+      const previous=pageOrderSnapshots.get(knownOrderId);
       if(previous!==undefined){
-        if(previous!==fingerprint)throw new Error('Conflicting duplicate Order item snapshots on same page; no import/checkpoint');
-        continue; // identical order cards repeated on the same page are not a second order
+        if(previous!==listFingerprint)throw new Error('Conflicting duplicate Order item snapshots on same page; no import/checkpoint');
+        continue;
       }
-      pageOrderSnapshots.set(n.orderNo,fingerprint);
-      orderCount++;batch.push(...n.items);
+      pageOrderSnapshots.set(knownOrderId,listFingerprint);
+      if(options.autoEnrich&&options.tabId){
+        const detailSnapshot=await resolveBuyerItemSnapshot(options.tabId,r,account);
+        if(detailSnapshot.status==='error')
+          throw new Error(`Buyer Order Detail item mismatch: ${detailSnapshot.reason}; no page write or checkpoint`);
+        if(detailSnapshot.status==='complete'){
+          n=detailSnapshot.normalized;
+          if(detailSnapshot.detailJson)detailMetas.set(String(n.orderNo),detailMeta(detailSnapshot.detailJson));
+          buyerDetailComplete++;
+        }else buyerDetailPreview++;
+        // Rate-limit friendly: each order detail is read once before import.
+        await sleep(110);
+      }
+      if(n.items.length){orderCount++;batch.push(...n.items);}
+      else{ignored++;const reason=n.ignoredReason||'unknown';reasonCounts[reason]=(reasonCounts[reason]||0)+1;}
     }
     else{ignored++;const reason=n.ignoredReason||'unknown';reasonCounts[reason]=(reasonCounts[reason]||0)+1;}
   }
   const structural=['missing_order_cards','missing_order_identity','missing_shop','missing_items','missing_valid_items','missing_quantity','invalid_quantity','conflicting_quantity_fields','product_identity_collision','product_count_exceeds_snapshot','mixed_shop_cards'].reduce((s,k)=>s+(reasonCounts[k]||0),0);
-  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรง (จำนวนสินค้า/ตัวเลือก) v2.4.14 · ไม่ได้นำเข้า / ไม่เลื่อน checkpoint · invalid=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · ไม่มี raw buyer data ใน Error`);
+  if(structural>0)throw new Error(`Shopee schema บาง Order ไม่ตรง (จำนวนสินค้า/ตัวเลือก) v2.4.15 · ไม่ได้นำเข้า / ไม่เลื่อน checkpoint · invalid=${structural}/${raw.length} · reasons=${JSON.stringify(reasonCounts)} · ไม่มี raw buyer data ใน Error`);
   let cancelledResult={deleted:0},importResult={};
   if(cancelledNos.length)cancelledResult=await postCancelled(hub,String(account.userid),cancelledNos)||{deleted:0};
   if(batch.length)importResult=await postBatch(hub,batch,{url:pageUrl,scanId,jobType:options.jobType||'sync'})||{};
-  let autoDetail={ok:0,errors:0,lastError:''};if(options.autoEnrich&&options.tabId&&Array.isArray(importResult.detail_refresh_order_nos)&&importResult.detail_refresh_order_nos.length){const typeByOrder=new Map(raw.map(x=>{const n=normalizeOrder(x,account);return [String(n.orderNo||''),Number(x?.list_type||0)]}));const rows=importResult.detail_refresh_order_nos.map(no=>({order_no:String(no),list_type:typeByOrder.get(String(no))||0}));autoDetail=await autoEnrichOrders(hub,options.tabId,account,rows);}
+  let autoDetail={ok:0,errors:0,lastError:''};if(options.autoEnrich&&options.tabId&&Array.isArray(importResult.detail_refresh_order_nos)&&importResult.detail_refresh_order_nos.length){const typeByOrder=new Map(raw.map(x=>{const n=normalizeOrder(x,account);return [String(n.orderNo||''),Number(x?.list_type||0)]}));const rows=importResult.detail_refresh_order_nos.map(no=>({order_no:String(no),list_type:typeByOrder.get(String(no))||0}));autoDetail=await autoEnrichOrders(hub,options.tabId,account,rows,detailMetas);}
   const panOrders=Number.isFinite(Number(importResult.pan_purchase_orders))?Number(importResult.pan_purchase_orders):(Number.isFinite(Number(cancelledResult.pan_purchase_orders))?Number(cancelledResult.pan_purchase_orders):null);
-  return {orderCount,itemCount:batch.length,ignored,cancelled,dateUnknown,shopeeRecords:raw.length,newUnique,duplicateRecords,seenOrderNos:[...seen],insertedOrders:Number(importResult.inserted_orders||0),updatedOrders:Number(importResult.updated_orders||0),cancelledDeleted:Number(cancelledResult.deleted||0),panOrders,autoDetailUpdated:autoDetail.ok,autoDetailErrors:autoDetail.errors,lastAutoDetailError:autoDetail.lastError};
+  return {orderCount,itemCount:batch.length,buyerDetailComplete,buyerDetailPreview,ignored,cancelled,dateUnknown,shopeeRecords:raw.length,newUnique,duplicateRecords,seenOrderNos:[...seen],insertedOrders:Number(importResult.inserted_orders||0),updatedOrders:Number(importResult.updated_orders||0),cancelledDeleted:Number(cancelledResult.deleted||0),panOrders,autoDetailUpdated:autoDetail.ok,autoDetailErrors:autoDetail.errors,lastAutoDetailError:autoDetail.lastError};
 }
 function syncCounterPatch(st,rr){
-  return {orders:Number(st.orders||0)+rr.orderCount,items:Number(st.items||0)+rr.itemCount,ignored:Number(st.ignored||0)+rr.ignored,cancelled:Number(st.cancelled||0)+rr.cancelled,dateUnknown:Number(st.dateUnknown||0)+rr.dateUnknown,shopeeRecords:Number(st.shopeeRecords||0)+rr.shopeeRecords,shopeeUniqueOrders:Number(st.shopeeUniqueOrders||0)+rr.newUnique,duplicateRecords:Number(st.duplicateRecords||0)+rr.duplicateRecords,panInsertedOrders:Number(st.panInsertedOrders||0)+rr.insertedOrders,panUpdatedOrders:Number(st.panUpdatedOrders||0)+rr.updatedOrders,cancelledDeleted:Number(st.cancelledDeleted||0)+rr.cancelledDeleted,autoDetailUpdated:Number(st.autoDetailUpdated||0)+Number(rr.autoDetailUpdated||0),autoDetailErrors:Number(st.autoDetailErrors||0)+Number(rr.autoDetailErrors||0),lastAutoDetailError:rr.lastAutoDetailError||st.lastAutoDetailError||'',panOrders:rr.panOrders===null?Number(st.panOrders||0):rr.panOrders,syncSeenOrderNos:rr.seenOrderNos};
+  return {orders:Number(st.orders||0)+rr.orderCount,items:Number(st.items||0)+rr.itemCount,buyerDetailComplete:Number(st.buyerDetailComplete||0)+Number(rr.buyerDetailComplete||0),buyerDetailPreview:Number(st.buyerDetailPreview||0)+Number(rr.buyerDetailPreview||0),ignored:Number(st.ignored||0)+rr.ignored,cancelled:Number(st.cancelled||0)+rr.cancelled,dateUnknown:Number(st.dateUnknown||0)+rr.dateUnknown,shopeeRecords:Number(st.shopeeRecords||0)+rr.shopeeRecords,shopeeUniqueOrders:Number(st.shopeeUniqueOrders||0)+rr.newUnique,duplicateRecords:Number(st.duplicateRecords||0)+rr.duplicateRecords,panInsertedOrders:Number(st.panInsertedOrders||0)+rr.insertedOrders,panUpdatedOrders:Number(st.panUpdatedOrders||0)+rr.updatedOrders,cancelledDeleted:Number(st.cancelledDeleted||0)+rr.cancelledDeleted,autoDetailUpdated:Number(st.autoDetailUpdated||0)+Number(rr.autoDetailUpdated||0),autoDetailErrors:Number(st.autoDetailErrors||0)+Number(rr.autoDetailErrors||0),lastAutoDetailError:rr.lastAutoDetailError||st.lastAutoDetailError||'',panOrders:rr.panOrders===null?Number(st.panOrders||0):rr.panOrders,syncSeenOrderNos:rr.seenOrderNos};
 }
 
 async function runSync(tabId,fresh){
@@ -387,7 +525,7 @@ async function runSync(tabId,fresh){
         if(st.primaryMetaRetryCount||st.primaryMetaRetryKey)st=await setState(aid,{primaryMetaRetryKey:'',primaryMetaRetryCount:0});
         const raw=parsed.records;
         if(raw.length===0&&Number(st.pages||0)===0){await setState(aid,{apiMode:'status',statusIndex:0,statusOffset:0,statusSeenOffsets:[],status:'primary คืน 0 record · ใช้ status fallback',lastFormat:parsed.format});continue;}
-        const rr=await processSyncRecords(raw,account,hub,st.scanId,page.url,st.syncSeenOrderNos||[]);
+        const rr=await processSyncRecords(raw,account,hub,st.scanId,page.url,st.syncSeenOrderNos||[],{autoEnrich:true,tabId,jobType:'sync'});
         const next=nextOffset(page.json,offset,limit,raw.length),seen=[...(st.seenOffsets||[]).slice(-300),offset];
         st=await setState(aid,{offset:next,...syncCounterPatch(st,rr),pages:Number(st.pages||0)+1,lastPageCount:raw.length,lastFormat:parsed.format,seenOffsets:seen,status:`primary page ${Number(st.pages||0)+1} · offset ${offset}`});
         if(next===-1||raw.length===0){if(Number(st.orders||0)>0){const rec=await hubJson(hub,'/api/reconcile.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account_id:aid,scan_id:st.scanId})});if(rec?.ok===false)throw new Error(rec.error||'PAN reconcile ไม่สำเร็จ');}await setState(aid,{running:false,done:true,status:'completed',apiMode:'primary'});return;}
@@ -425,7 +563,7 @@ async function runSync(tabId,fresh){
         throw new Error(`Shopee status-list schema ไม่ตรง · list_type=${listType} · shape=${JSON.stringify(shape)}`);
       }
       if(st.statusMetaRetryCount||st.statusMetaRetryKey)st=await setState(aid,{statusMetaRetryKey:'',statusMetaRetryCount:0});
-      const raw=parsed.records.map(x=>(x&&x.list_type===undefined)?{...x,list_type:listType}:x),rr=await processSyncRecords(raw,account,hub,st.scanId,page.url,st.syncSeenOrderNos||[]),next=nextOffset(page.json,offset,limit,raw.length),seen=[...statusSeen.slice(-500),`${listType}:${offset}`];
+      const raw=parsed.records.map(x=>(x&&x.list_type===undefined)?{...x,list_type:listType}:x),rr=await processSyncRecords(raw,account,hub,st.scanId,page.url,st.syncSeenOrderNos||[],{autoEnrich:true,tabId,jobType:'sync'}),next=nextOffset(page.json,offset,limit,raw.length),seen=[...statusSeen.slice(-500),`${listType}:${offset}`];
       const common={...syncCounterPatch(st,rr),pages:Number(st.pages||0)+1,lastPageCount:raw.length,lastFormat:`status:${listType}:${parsed.format}`,statusSeenOffsets:seen,apiMode:'status'};
       if(next===-1||raw.length===0)st=await setState(aid,{...common,statusIndex:statusIndex+1,statusOffset:0,status:`status type ${listType} เสร็จ`});
       else st=await setState(aid,{...common,statusIndex,statusOffset:next,status:`status type ${listType} · offset ${offset}`});
@@ -619,37 +757,39 @@ async function findSingleOrderInShopee(tabId,target,account,onPage=async()=>{}){
   }
   throw new Error(visited>=maxPages?'Reached read-only search limit without finding order; no PAN data changed':'Order not found in available Shopee Buyer API views; no PAN data changed');
 }
-async function refreshSingleOrder(tabId,orderNo,expectedQuantity){
-  const target=txt(orderNo).trim();const expected=Number(expectedQuantity);
+/** One-order API audit without asking the user to type an expected quantity.
+ * Never promotes condensed list items to an authoritative detail snapshot.
+ */
+async function refreshSingleOrder(tabId,orderNo){
+  const target=txt(orderNo).trim();
   if(!/^[0-9A-Za-z-]{8,64}$/.test(target))throw new Error('ระบุเลข Order ให้ถูกต้อง');
-  if(!Number.isSafeInteger(expected)||expected<1||expected>100000)throw new Error('ระบุจำนวนสินค้าที่ตรวจจาก Shopee (ชิ้น) ก่อน');
   if(runningJob)throw new Error('มีงาน Sync/Repair กำลังทำอยู่');
   runningJob='single-order';let aid='';
   try{
     const account=await accountForTab(tabId);aid=String(account.userid);
-    const publish=async(patch)=>setState(aid,{quantityAudit:{orderNo:target,expected,...patch}});
-    await publish({status:'scanning',message:'กำลังอ่าน Shopee เฉพาะ Order นี้; ยังไม่แก้ข้อมูล PAN'});
-    const source=await findSingleOrderInShopee(tabId,target,account,async count=>{
+    const publish=async patch=>setState(aid,{quantityAudit:{orderNo:target,...patch}});
+    await publish({status:'scanning',message:'กำลังตรวจรายการสินค้าจาก Shopee Buyer Detail; ยังไม่แก้ข้อมูล PAN'});
+    const found=await findSingleOrderInShopee(tabId,target,account,async count=>{
       if(count===1||count%10===0)await publish({status:'scanning',message:`กำลังค้นหา Shopee ${count} หน้า (ยังไม่แก้ข้อมูล)`});
     });
-    const candidate=normalizeOrder(source.record,account);
-    if(candidate.ignoredReason||!candidate.items?.length)
-      throw new Error(`Order item snapshot ไม่ครบ (${candidate.ignoredReason||'empty'}); no PAN changes`);
-    if(candidate.orderNo!==target)throw new Error('Order identifier mismatch; no PAN changes');
-    const recorded=candidate.itemQuantity;
-    if(recorded!==expected){
-      await publish({status:'mismatch',actual:recorded,lines:candidate.items.length,
-        message:`Shopee API อ่านได้ ${recorded} ชิ้น (${candidate.items.length} ตัวเลือก) แต่คุณยืนยัน ${expected} ชิ้น — ไม่เขียนทับข้อมูล PAN`});
+    const detail=await resolveBuyerItemSnapshot(tabId,found.record,account);
+    if(detail.status!=='complete'){
+      await publish({status:'waiting_detail',message:detail.status==='error'
+        ?`ข้อมูลสินค้า Buyer Detail ขัดแย้ง (${detail.reason}) — ไม่แก้ PAN`
+        :'Shopee Buyer Detail ยังไม่ส่งรายการสินค้าครบที่ตรวจสอบได้ — ไม่แก้ PAN หรือเดาจำนวน'});
       return;
     }
-    if(String((await accountForTab(tabId)).userid)!==aid)throw new Error('บัญชี Shopee เปลี่ยนระหว่างตรวจ; no PAN changes');
+    const normalized=detail.normalized;
+    if(normalized.orderNo!==target||!normalized.items.length)throw new Error('Order ID mismatch or item rows empty; no write');
+    if(String((await accountForTab(tabId)).userid)!==aid)throw new Error('SESSION_BLOCK account switched; no write');
     const cfg=await chrome.storage.local.get('hubUrl');
     const hub=(cfg.hubUrl||DEFAULT_HUB).replace(/\/$/,'');
-    const result=await postBatch(hub,candidate.items,{url:source.url,scanId:crypto.randomUUID(),jobType:'single_order_recheck'});
-    await publish({status:'updated',actual:recorded,lines:candidate.items.length,
-      message:`อัปเดตเฉพาะ Order นี้แล้ว · ${candidate.items.length} ตัวเลือก · ${recorded} ชิ้น · เปิด PAN ใหม่เพื่อดูผล`,updated:Number(result.updated_orders||0)});
+    const result=await postBatch(hub,normalized.items,{url:found.url,scanId:crypto.randomUUID(),jobType:'buyer_detail_recheck'});
+    await publish({status:'updated',actual:normalized.itemQuantity,lines:normalized.items.length,
+      message:`อัปเดตจาก Shopee Buyer Detail แล้ว · ${normalized.items.length} บรรทัด · ${normalized.itemQuantity} ชิ้น (ไม่ต้องกรอกจำนวนเอง)`,
+      updated:Number(result.updated_orders||0)});
   }catch(e){
-    if(aid)await setState(aid,{quantityAudit:{orderNo:target,expected,status:'error',message:String(e.message||e)}});
+    if(aid)await setState(aid,{quantityAudit:{orderNo:target,status:'error',message:String(e.message||e)}});
     else throw e;
   }finally{runningJob=null;}
 }
@@ -661,7 +801,7 @@ chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{(async()=>{
   else if(msg?.type==='RESUME_SYNC'){const a=await accountForTab(msg.tabId);const st=await getState(String(a.userid));if(st.job==='recent')runRecentSync(msg.tabId,false).catch(reportRecentError);else if(st.job==='repair'&&!st.done)runRepair(msg.tabId,true);else runSync(msg.tabId,false);sendResponse({ok:true});}
   else if(msg?.type==='START_REPAIR'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runRepair(msg.tabId,false,false).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='START_REPAIR_ALL'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runRepair(msg.tabId,false,true).catch(reportRecentError);sendResponse({ok:true});}
-  else if(msg?.type==='REFRESH_SINGLE_ORDER'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');refreshSingleOrder(msg.tabId,msg.orderNo,msg.expectedQuantity).catch(reportRecentError);sendResponse({ok:true});}
+  else if(msg?.type==='REFRESH_SINGLE_ORDER'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');refreshSingleOrder(msg.tabId,msg.orderNo).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='START_PRODUCT_ENRICH'){if(runningJob)throw new Error('มีงาน Collector กำลังทำอยู่');runProductEnrichment(msg.tabId).catch(reportRecentError);sendResponse({ok:true});}
   else if(msg?.type==='PAUSE_SYNC'){const id=(await chrome.storage.local.get('lastAccountId')).lastAccountId||'';if(id)await setState(id,{paused:true,status:'pausing'});sendResponse({ok:true});}
   else if(msg?.type==='RESET_SYNC'){const id=String(msg.accountId||((await chrome.storage.local.get('lastAccountId')).lastAccountId||''));if(id){const all=await getAllStates();delete all[id];await chrome.storage.local.set({syncStates:all});}sendResponse({ok:true});}

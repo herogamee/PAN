@@ -46,7 +46,7 @@ $expanderChecks=[
     'detail panels not initially visible' => str_contains($orders,'class="order-products-row" hidden'),
     'order product links escape URL and have noopener' => str_contains($orders,'rel="noopener noreferrer"') && str_contains($orders,'pan_order_item_safe_url('),
     'saved quantity explicitly distinguished from verified buyer quantity' => str_contains($orders,'สินค้าที่ PAN บันทึกในคำสั่งซื้อ') && str_contains($orders,'จำนวนตามข้อมูลที่ PAN บันทึก'),
-    'product detail uses local JS asset and no buyer API fetch' => str_contains($orders,'assets/orders.js?v=2.5.10') && is_file($root.'/assets/orders.js'),
+    'product detail uses local JS asset and no buyer API fetch' => str_contains($orders,'assets/orders.js?v=2.5.11') && is_file($root.'/assets/orders.js'),
     'all ten original summary columns are retained' => str_contains($orders,'colspan="10"'),
 ];
 foreach($expanderChecks as $label=>$passed){

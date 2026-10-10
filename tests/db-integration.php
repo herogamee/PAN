@@ -308,6 +308,68 @@ try {
     test_check((int)$attestedQty->fetchColumn()===5&&(int)$stillManual->fetchColumn()===0,
       'Complete targeted verified snapshot replaces provisional variant without losing five units');
 
+    // v2.5.11: detail-first automatic item reconciliation. A single purchased
+    // SKU can appear on multiple individual Buyer detail lines; all 4 rows (and
+    // each explicit source unit) must survive the UNIQUE order/product constraint.
+    $oldA=fixture('CI-BUYER-DETAIL','shopee:700:10:0','CI-A',1);
+    $oldA['product_name']='Synthetic trousers';$oldA['variant_name']='One size';
+    $oldB=fixture('CI-BUYER-DETAIL','shopee:700:20:0','CI-A',1);
+    $oldB['product_name']='Synthetic fishing';$oldB['variant_name']='5#';
+    import_test($db,[$oldA,$oldB],'detail-preview-old');
+    $detailId=(int)row_for($db,'CI-BUYER-DETAIL')['id'];
+    $detailQty=$db->prepare('SELECT COALESCE(SUM(quantity),0) FROM order_items WHERE order_id=?');
+    $detailLines=$db->prepare('SELECT COUNT(*) FROM order_items WHERE order_id=?');
+    $detailQty->execute([$detailId]);$detailLines->execute([$detailId]);
+    test_check((int)$detailQty->fetchColumn()===2&&(int)$detailLines->fetchColumn()===2,
+        'Synthetic legacy Buyer preview has only two rows/two units');
+    $four=[];
+    foreach([[10,'Synthetic trousers','One size',1],[10,'Synthetic trousers','One size',1],
+             [20,'Synthetic fishing','5#',2],[20,'Synthetic fishing','5#',1]] as $i=>$d){
+        $item=fixture('CI-BUYER-DETAIL', 'shopee:700:'.$d[0].':line-fixture-'.$i,'CI-A',$d[3]);
+        $item['product_name']=$d[1];$item['variant_name']=$d[2];
+        $item['item_snapshot_source']='buyer_detail_complete';
+        $item['item_snapshot_complete']=1;
+        $four[]=$item;
+    }
+    import_test($db,$four,'detail-verified');
+    $detailQty->execute([$detailId]);$detailLines->execute([$detailId]);
+    test_check((int)$detailQty->fetchColumn()===5&&(int)$detailLines->fetchColumn()===4,
+        'Four individual Buyer Detail purchased lines yield five units');
+    $verifiedLines=$db->prepare("SELECT COUNT(*) FROM order_items WHERE order_id=? AND import_source='shopee_buyer_detail_verified'");
+    $verifiedLines->execute([$detailId]);
+    test_check((int)$verifiedLines->fetchColumn()===4,'All detail lines carry source-quality provenance');
+    $db->prepare('SELECT COUNT(*) FROM orders WHERE order_no=?')->execute(['CI-BUYER-DETAIL']);
+    check_throws(fn()=>import_test($db,[$oldA,$oldB],'detail-regression-preview'),
+        'Condensed Buyer Order List cannot erase verified Buyer Detail snapshot');
+    $detailQty->execute([$detailId]);$detailLines->execute([$detailId]);
+    test_check((int)$detailQty->fetchColumn()===5&&(int)$detailLines->fetchColumn()===4,
+        'Rejected preview leaves four verified rows/five units unchanged');
+    $short=array_slice($four,0,3);
+    check_throws(fn()=>import_test($db,$short,'detail-regression-short'),
+        'Incomplete Buyer Detail snapshot cannot silently reduce verified row count');
+    import_test($db,$four,'detail-repeat');
+    $detailQty->execute([$detailId]);$detailLines->execute([$detailId]);
+    test_check((int)$detailQty->fetchColumn()===5&&(int)$detailLines->fetchColumn()===4,
+        'Repeated Buyer Detail import is idempotent without line multiplication');
+
+    // An older user-attested five-unit correction can be replaced with a full
+    // authenticated Buyer snapshot automatically, but not with a new preview.
+    $manual=fixture('CI-DETAIL-AUTO','legacy-first','CI-A',1);
+    $manual2=fixture('CI-DETAIL-AUTO','legacy-second','CI-A',3);
+    $manual3=fixture('CI-DETAIL-AUTO','legacy-third','CI-A',1);
+    import_test($db,[$manual,$manual2,$manual3],'detail-attest-base');
+    $attestAuto=(int)row_for($db,'CI-DETAIL-AUTO')['id'];
+    $db->prepare("UPDATE order_items SET import_source='pan_user_attested_quantity' WHERE order_id=?")->execute([$attestAuto]);
+    $autoRows=[];
+    foreach($four as $item){$item['order_no']='CI-DETAIL-AUTO';$autoRows[]=$item;}
+    import_test($db,$autoRows,'detail-attest-auto');
+    $manualRemaining=$db->prepare("SELECT COUNT(*) FROM order_items WHERE order_id=? AND import_source='pan_user_attested_quantity'");
+    $manualRemaining->execute([$attestAuto]);
+    $detailQty->execute([$attestAuto]);$detailLines->execute([$attestAuto]);
+    test_check((int)$manualRemaining->fetchColumn()===0&&
+        (int)$detailQty->fetchColumn()===5&&(int)$detailLines->fetchColumn()===4,
+        'Fully sourced Buyer Detail automatically replaces user-attested 5 units with four real lines');
+
     if($mode==='mysql'){
         // Genuine SQLite→MySQL migration into the **same disposable** database,
         // after deleting all synthetic test rows (no source production files).

@@ -59,3 +59,8 @@ function pan_order_item_line_total(array $item): float {
 function pan_order_item_price_pending(array $item): bool {
     return (string)($item['import_source']??'')==='pan_user_attested_quantity';
 }
+
+/** Source-level distinction: a preview is never a verified Buyer Detail. */
+function pan_order_item_detail_verified(array $item): bool {
+    return (string)($item['import_source']??'')==='shopee_buyer_detail_verified';
+}
