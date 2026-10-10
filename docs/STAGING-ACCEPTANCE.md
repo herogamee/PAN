@@ -1,10 +1,10 @@
 # PAN — Staging Acceptance Runbook
 
-> สำหรับ **PAN Core v2.5.10 + Shopee Connector v2.4.14**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
+> สำหรับ **PAN Core v2.5.11 + Shopee Connector v2.4.15**. ห้ามทำการทดสอบที่แก้ไขข้อมูลบน Production โดยไม่สำรอง/อนุมัติ ต้องใช้ staging แยกฐานข้อมูลและ config จากระบบจริง
 
 ## 0. ก่อนเริ่ม
 
-- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.10`, Extension manifest เป็น `2.4.14`
+- [ ] ยืนยัน commit/release version: `VERSION` เป็น `2.5.11`, Extension manifest เป็น `2.4.15`
 - [ ] สร้าง staging directory, config, database, API keys และบัญชีทดสอบที่ **ไม่ใช้ไฟล์ runtime เดียวกับ Production**
 - [ ] Backup source, DB, `storage/config.php` และไฟล์ WAL ของ SQLite ด้วยวิธีที่เหมาะกับระบบที่รันอยู่
 - [ ] ทดสอบ restore ลง staging ที่แยกจากต้นฉบับก่อนเริ่ม import
@@ -166,3 +166,16 @@ Login v2.5.3 requires the login page's new CSRF hidden field; refresh old login 
 - [ ] อย่าอัปไฟล์ SQLite, `storage/config.php`, raw JSON หรือเลข Order จริงขึ้น GitHub; เผยแพร่ได้เพียง synthetic fixtures และผลนับที่ปกปิดตัวระบุแล้ว
 
 [Core 2.5.10 release notes](../RELEASE-NOTES-v2.5.10.md) · [GitHub CI five jobs PASS](https://github.com/herogamee/PAN/actions/runs/37971871137). User-authorized historical data correction is not synonymous with Buyer API acceptance.
+
+## 13. Buyer Detail-first auto item rows (v2.5.11)
+
+- [ ] Back up current database and runtime config; **stage a separate copy**, do not replace live storage or run destructive Full Sync first.
+- [ ] Verify Core 2.5.11 and Extension 2.4.15; Chrome extension must be reloaded.
+- [ ] Use the authorized Shopee buyer account and one known order displayed as four item rows, total five pieces. Start **single-order recheck with order number only**, with no expected-total input.
+- [ ] Confirm the private Buyer Order Detail endpoint returns all purchased rows. Record only **redacted field paths/row counts**, never raw personal data in public GitHub.
+- [ ] If detail is complete, verify four independently stored rows, summed quantity five, order-level amount unchanged, correct account and no unrelated order mutations.
+- [ ] If API returns only two preview rows/metadata or disagrees on quantities, record BLOCKED and preserve the existing verified/attested DB records; **no false success** and no unsafe checkpoint advance.
+- [ ] Verify second import is idempotent, Full/Recent preview cannot overwrite detail rows, rollback works in SQLite/MariaDB.
+- [ ] If Buyer Detail is metadata-only in real session, research permitted same-session HTML item-list extraction separately. No bypass of Shopee login/CAPTCHA/anti-fraud.
+
+Source [v2.5.11 release notes](../RELEASE-NOTES-v2.5.11.md) · [CI PASS](https://github.com/herogamee/PAN/actions/runs/38034020920) · [Live acceptance Issue #8](https://github.com/herogamee/PAN/issues/8). **Synthetic CI does not prove real Buyer API availability.**

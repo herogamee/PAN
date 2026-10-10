@@ -1,8 +1,16 @@
 # PAN — Roadmap & Release Gates
 
-> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.10 + Shopee Connector v2.4.14** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
+> อัปเดต 2026-10-09 (Asia/Bangkok) · **PAN Core v2.5.11 + Shopee Connector v2.4.15** · Implementation baseline: [9837673](https://github.com/herogamee/PAN/commit/98376735244058ec1517e04de8eef90ebe7b97f0) before this documentation update.
 >
 > **สำคัญ:** Source อยู่บน GitHub และ [CI ผ่าน](https://github.com/herogamee/PAN/actions/runs/37746656907) แต่ **ยังไม่มีหลักฐานผ่าน Production Acceptance**. สถานะเฟสต่อไปนี้เป็นแผนงานและการตรวจรับ ไม่ใช่คำยืนยันว่าใช้งานกับ Shopee จริงสำเร็จแล้ว
+
+## PAN v2.5.11 — Buyer Detail-first auto item reconciliation (Issue #8)
+
+- **Implemented:** Full/Recent Sync reads authenticated Shopee Buyer Order Detail before committing item snapshots; preserves **four separate source rows (1+1+2+1=5)** even with repeated SKU/model/variant. Account validation and explicit quantity checks remain mandatory.
+- **Quality control:** Row-level source provenance stored; condensed Order List previews cannot overwrite Buyer Detail-verified rows. Incomplete/missing/contradictory data stops import rather than silently manufacturing quantities. User-attested rows protected until complete matching detail verified.
+- **One-order recheck:** Requires order number only, **not manually entered piece counts**. Still requires a valid authorized Shopee session.
+- **CI:** [Core/Connector source](https://github.com/herogamee/PAN/commit/b97b965f663235d1a457618a4f907bf0de03fa1f), [5-job SQLite/MariaDB/Connector CI PASS](https://github.com/herogamee/PAN/actions/runs/38034020920), [release notes](RELEASE-NOTES-v2.5.11.md), [acceptance plan](docs/PAN-v2.5.11-BUYER-DETAIL-ACCEPTANCE.md), [Issue #8](https://github.com/herogamee/PAN/issues/8).
+- **IMPORTANT — Live acceptance PENDING:** Synthetic 4/5 fixture ≠ actual authenticated Buyer API response. If Buyer Detail lacks complete rows, leave them unresolved; do not claim user's live order has already become five units. The rendered order-page fallback, if needed, requires independent research/testing and no anti-fraud bypass.
 
 ## PAN v2.5.10 — ป้องกันข้อมูลจำนวนสินค้าที่ผู้ใช้ยืนยัน
 
