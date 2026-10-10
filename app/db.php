@@ -354,7 +354,7 @@ function pan_guard_buyer_item_snapshots(PDO $db, array $items): void {
     if(!$orders)return;
     foreach(array_chunk(array_keys($orders),200) as $nos){
         $placeholders=implode(',',array_fill(0,count($nos),'?'));
-        $stmt=$db->prepare("SELECT o.order_no, i.import_source, COUNT(*) lines, SUM(i.quantity) units
+        $stmt=$db->prepare("SELECT o.order_no, i.import_source, COUNT(*) AS line_count, SUM(i.quantity) AS unit_count
           FROM orders o JOIN order_items i ON i.order_id=o.id
           WHERE o.order_no IN ($placeholders) GROUP BY o.order_no,i.import_source");
         $stmt->execute($nos);
@@ -366,7 +366,7 @@ function pan_guard_buyer_item_snapshots(PDO $db, array $items): void {
             $stored=$existing[$no]??[];
             $priorQty=0;$priorLines=0;$trusted=false;
             foreach($stored as $r){
-                $priorQty+=(int)$r['units'];$priorLines+=(int)$r['lines'];
+                $priorQty+=(int)$r['unit_count'];$priorLines+=(int)$r['line_count'];
                 if((string)$r['import_source']==='shopee_buyer_detail_verified')$trusted=true;
             }
             // A metadata-only detail response cannot downgrade a prior verified

@@ -68,7 +68,7 @@ test('successful read probe clears saved block without starting sync', async () 
 });
 test('resume continues saved pagination and scan identity', async () => {
   const seed = { lastAccountId: '42', syncStates: { '42': { accountId: '42', offset: 20, pages: 1, orders: 1, seenOffsets: [0], scanId: 'existing-scan', apiMode: 'primary' } } };
-  const { c, posts } = await fixture(url => { assert.match(url, /offset=20/); return { data: { details_list: [order('b')], next_offset: -1 } }; }, seed);
+  const { c, posts } = await fixture(url => { if(url.includes('get_order_detail'))return {data:{pc_processing_info:{}}}; assert.match(url, /offset=20/); return { data: { details_list: [order('b')], next_offset: -1 } }; }, seed);
   await c.sync(false);
   assert.equal(c.status().orders, 2);
   assert.equal(posts.find(p=>p.url.endsWith('/import.php')).body.scan_id, 'existing-scan');
