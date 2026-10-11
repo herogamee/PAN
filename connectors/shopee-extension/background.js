@@ -827,7 +827,7 @@ async function retryPendingItemOrders(tabId){
     if(st.pendingHub&&st.pendingHub!==hub)throw new Error('PAN URL ไม่ตรงกับรายการที่ค้างตรวจสินค้า · ไม่บันทึกข้ามฐาน');
     const pending=Array.isArray(st.pendingItemOrders)?st.pendingItemOrders:[];
     if(!pending.length){await setState(aid,{running:false,done:Boolean(st.scanComplete),partial:false,pendingItemCount:0,status:'ไม่มีออเดอร์ที่ค้างตรวจสินค้า'});return;}
-    await setState(aid,{job:'item_retry',running:true,done:false,paused:false,error:'',partial:true,
+    await setState(aid,{job:'item_retry',pendingRetryOrigin:['sync','recent'].includes(st.job)?st.job:st.pendingRetryOrigin||'',running:true,done:false,paused:false,error:'',partial:true,
       pendingRetryDone:0,pendingRetryTotal:pending.length,status:`ตรวจ Buyer Detail อีกครั้ง ${pending.length} Order`});
     for(let i=0;i<pending.length;i++){
       const row=pending[i];st=await getState(aid);
@@ -859,8 +859,17 @@ async function retryPendingItemOrders(tabId){
       await sleep(220);
     }
     st=await getState(aid);const left=(st.pendingItemOrders||[]).length;
-    await setState(aid,{running:false,partial:left>0,done:left===0&&Boolean(st.scanComplete),
-      status:left?partialSyncText(left):'ตรวจรายการค้างครบแล้ว · ดูผลใน PAN'});
+    // A finished Full Sync must reconcile its original scan before reporting
+    // success. Targeted retries alone never reconcile or verify a whole scan.
+    if(left===0&&st.scanComplete&&st.pendingRetryOrigin==='sync'){
+      if(!st.scanId)throw new Error('Full Sync scan identity missing; cannot finalize pending retry');
+      if(Number(st.orders||0)>0){
+        const rec=await hubJson(hub,'/api/reconcile.php',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account_id:aid,scan_id:st.scanId})});
+        if(rec?.ok===false)throw new Error(rec.error||'PAN reconcile หลังตรวจรายการค้างไม่สำเร็จ');
+      }
+    }
+    await setState(aid,{running:false,partial:left>0||!st.scanComplete,done:left===0&&Boolean(st.scanComplete),
+      status:left?partialSyncText(left):st.scanComplete?'ตรวจรายการค้างครบแล้ว · ซิงก์เสร็จ':'ตรวจรายการค้างครบแล้ว · งานสแกนยังไม่เสร็จ'});
   }catch(e){if(aid)await setState(aid,{running:false,error:String(e?.message||e),status:'error'});else throw e;}
   finally{runningJob=null;}
 }
