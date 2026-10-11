@@ -225,6 +225,11 @@ test('two malformed item snapshots in 20 do not block the 18 valid Orders',async
   assert.equal(result.pendingItemOrders.length,0);
   assert.equal(result.done,true);
   assert.equal(result.partial,false);
+  assert.equal(result.pendingRetryOrigin,'sync');
+  const reconciles=f.posts.filter(x=>x.url.endsWith('/api/reconcile.php'));
+  assert.equal(reconciles.length,1,'original Full Sync must reconcile once after all pending items recover');
+  assert.equal(reconciles[0].body.account_id,'42');
+  assert.equal(reconciles[0].body.scan_id,original.scanId);
   assert.equal(result.scanId,original.scanId);
   assert.equal(result.offset,original.offset,'retry never rewinds checkpoint');
   assert.equal(f.posts.filter(x=>x.url.endsWith('/api/import.php')).length,3,'exactly two targeted imports');
